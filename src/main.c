@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 struct entry_pkg { dltask task; };
-static DL_TASK_DECL(entry_run);
+static void entry_run(DL_TASK_ARGS);
 
 int
 main(int argc, char **argv)
@@ -21,7 +21,8 @@ main(int argc, char **argv)
 	return rc;
 }
 
-static DL_TASK_DECL(entry_run)
+static void
+entry_run(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY(struct entry_pkg, entry_ptr, task);
 	print_version();
