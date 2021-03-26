@@ -25,6 +25,7 @@ set(HAMMER_OTHR_WARNFLAGS -Wall -Werror -Wextra)
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
+                   ${PROJECT_SOURCE_DIR}/src/error.c
                    ${PROJECT_SOURCE_DIR}/src/main.c)
 add_executable(hammer ${HAMMER_SOURCES})
 target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include)
