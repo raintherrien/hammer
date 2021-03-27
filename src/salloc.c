@@ -1,29 +1,29 @@
-#include "hammer/falloc.h"
+#include "hammer/salloc.h"
 #include "hammer/mem.h"
 #include <assert.h>
 #include <stdlib.h>
 
-#define FALLOC_PAGESZ (1 << 16)
+#define SALLOC_PAGESZ (1 << 16)
 
-_Static_assert(FALLOC_PAGESZ > sizeof(max_align_t), "Frame allocator page size is not large enough to hold a max_align_t");
-_Static_assert(FALLOC_PAGESZ % sizeof(max_align_t) == 0, "Frame allocator page size is not a multiple of max_align_t");
+_Static_assert(SALLOC_PAGESZ > sizeof(max_align_t), "Stack allocator page size is not large enough to hold a max_align_t");
+_Static_assert(SALLOC_PAGESZ % sizeof(max_align_t) == 0, "Stack allocator page size is not a multiple of max_align_t");
 
-struct falloc_page {
+struct salloc_page {
 	union {
-		struct falloc_page *next;
+		struct salloc_page *next;
 		size_t allocated_bytes;
 	};
-	char buffer[FALLOC_PAGESZ];
+	char buffer[SALLOC_PAGESZ];
 };
 
 /*
  * Attempt to take a free page from the pool. If no pages are available,
  * allocate and return one.
  */
-static struct falloc_page *
-falloc_take(struct falloc_pool *p)
+static struct salloc_page *
+salloc_take(struct salloc_pool *p)
 {
-	struct falloc_page *page;
+	struct salloc_page *page;
 	do {
 		page = atomic_load_explicit(&p->free, memory_order_relaxed);
 		if (page == NULL)
@@ -33,13 +33,13 @@ falloc_take(struct falloc_pool *p)
 }
 
 void *
-falloc(struct falloc *fa, size_t nbytes)
+salloc(struct salloc *fa, size_t nbytes)
 {
 	assert(nbytes < sizeof(max_align_t));
 	if (fa->current == NULL ||
-	    fa->current->allocated_bytes + nbytes >= FALLOC_PAGESZ)
+	    fa->current->allocated_bytes + nbytes >= SALLOC_PAGESZ)
 	{
-		struct falloc_page *next = falloc_take(fa->pool);
+		struct salloc_page *next = salloc_take(fa->pool);
 		next->allocated_bytes = 0;
 		/*
 		 * If this is our first allocation, begin our allocated
@@ -58,23 +58,23 @@ falloc(struct falloc *fa, size_t nbytes)
 }
 
 void
-falloc_destroy(struct falloc_pool *pool)
+salloc_destroy(struct salloc_pool *pool)
 {
-	struct falloc_page *page = atomic_load_explicit(&pool->free, memory_order_relaxed);
+	struct salloc_page *page = atomic_load_explicit(&pool->free, memory_order_relaxed);
 	atomic_store_explicit(&pool->free, NULL, memory_order_relaxed);
 	while (page) {
-		struct falloc_page *this = page;
+		struct salloc_page *this = page;
 		page = page->next;
 		free(this);
 	}
 }
 
 void
-falloc_init(struct falloc_pool *pool, size_t n, struct falloc *allocs)
+salloc_init(struct salloc_pool *pool, size_t n, struct salloc *allocs)
 {
 	atomic_store_explicit(&pool->free, NULL, memory_order_relaxed);
 	for (size_t i = 0; i < n; ++ i) {
-		allocs[i] = (struct falloc) {
+		allocs[i] = (struct salloc) {
 			.pool = pool,
 			.allocated_list = NULL,
 			.current = NULL
@@ -83,14 +83,14 @@ falloc_init(struct falloc_pool *pool, size_t n, struct falloc *allocs)
 }
 
 void
-falloc_reset(size_t n, struct falloc *allocs)
+salloc_reset(size_t n, struct salloc *allocs)
 {
 	assert(n > 0);
-	struct falloc_pool *pool = allocs[0].pool;
-	struct falloc_page *free;
-	struct falloc_page **tail = &free;
+	struct salloc_pool *pool = allocs[0].pool;
+	struct salloc_page *free;
+	struct salloc_page **tail = &free;
 	for (size_t i = 0; i < n; ++ i) {
-		struct falloc *fa = allocs + i;
+		struct salloc *fa = allocs + i;
 		assert(fa->pool == pool);
 		if (!fa->current)
 			continue;

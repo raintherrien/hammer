@@ -26,7 +26,7 @@ add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMME
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
-                   ${PROJECT_SOURCE_DIR}/src/falloc.c
+                   ${PROJECT_SOURCE_DIR}/src/salloc.c
                    ${PROJECT_SOURCE_DIR}/src/main.c
                    ${PROJECT_SOURCE_DIR}/src/mem.c)
 add_executable(hammer ${HAMMER_SOURCES})
