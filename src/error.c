@@ -11,6 +11,14 @@
 #define ANSI_ESC_BOLDRED "\033[31;1m"
 #define ANSI_ESC_RESET "\033[0m"
 
+/*
+ * These functions are real shitshows because it turns out getting the
+ * string description of an errno in a multithreaded environment is
+ * actually pretty annoying if you're trying to be standards compliant.
+ * So I just abuse the fact you can pass perror a NULL argument and
+ * it'll dump the description to stderr for us, in a thread-safe manner.
+ */
+
 void
 xperror_impl(
 	const char   *file,
