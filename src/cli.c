@@ -6,7 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h> /* GetSystemInfo */
+#else
 #include <unistd.h> /* sysconf */
+#endif
 
 #define HMR_VERSION_MAJOR 0
 #define HMR_VERSION_MINOR 1
@@ -95,19 +101,25 @@ random_seed(void)
 		if (nread == 1)
 			return rand;
 	}
-	return time(NULL);
+	return (unsigned long long)time(NULL);
 }
 
 /* Return the number of system threads; TODO: Currently POSIX bound */
 static inline unsigned int
 system_threads(void)
 {
+#ifdef _WIN32
+	SYSTEM_INFO sysinfo;
+	GetSystemInfo(&sysinfo);
+	return sysinfo.dwNumberOfProcessors;
+#else
 	int rc = sysconf(_SC_NPROCESSORS_ONLN);
 	if (rc == -1) {
 		xperror("Error querying sysconf(_SC_NPROCESSORS_ONLN)");
 		return 1;
 	}
 	return rc;
+#endif
 }
 
 int

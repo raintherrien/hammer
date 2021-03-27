@@ -21,7 +21,7 @@ find_package(deadlock REQUIRED)
 # Add warnings
 # Note: add_compile_options propegates these options to e.g. examples.
 set(HAMMER_MSVC_WARNFLAGS /W4 /WX)
-set(HAMMER_OTHR_WARNFLAGS -Wall -Werror -Wextra)
+set(HAMMER_OTHR_WARNFLAGS -Wall -Werror -Wextra -Wno-date-time -Wno-c++98-compat -Wno-implicit-fallthrough)
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
@@ -32,6 +32,11 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
 add_executable(hammer ${HAMMER_SOURCES})
 target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(hammer PRIVATE deadlock)
+
+# Disable warnings about fopen in VS2019
+if(WIN32)
+	target_compile_definitions(hammer PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 
 option(HAMMER_BUILD_SAN "Build with sanitizers" OFF)
 if(HAMMER_BUILD_SAN)

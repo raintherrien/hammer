@@ -32,6 +32,11 @@ xperror_impl(
 	fputs(ANSI_ESC_RESET, stderr);
 }
 
+
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
 void
 xperrorva_impl(
 	const char   *file,
@@ -52,6 +57,9 @@ xperrorva_impl(
 
 	va_end(fwdargs);
 }
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
 #undef ANSI_ESC_RESET
 #undef ANSI_ESC_BOLDRED

@@ -17,10 +17,10 @@ enum {
  * xperrorva is similar except it invokes fprintf with the format string
  * and forwarded variadic arguments.
  */
-#define xperror(MSG)        xperror_impl  (__FILE__, __func__, __LINE__, MSG);
-#define xperrorva(FMT, ...) xperrorva_impl(__FILE__, __func__, __LINE__, FMT, __VA_ARGS__);
-#define xpanic(MSG)   do { xperror(MSG);           exit(errno); } while (0);
-#define xpanicva(...) do { xperrorva(__VA_ARGS__); exit(errno); } while (0);
+#define xperror(MSG)        xperror_impl  (__FILE__, __func__, __LINE__, MSG)
+#define xperrorva(FMT, ...) xperrorva_impl(__FILE__, __func__, __LINE__, FMT, __VA_ARGS__)
+#define xpanic(MSG)   do { xperror(MSG);           exit(errno); } while (0)
+#define xpanicva(...) do { xperrorva(__VA_ARGS__); exit(errno); } while (0)
 
 /* Hey, if perror can ignore stderr write errors, so can we! */
 void xperror_impl(

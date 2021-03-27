@@ -35,7 +35,7 @@ falloc_take(struct falloc_pool *p)
 void *
 falloc(struct falloc *fa, size_t nbytes)
 {
-	assert(_Alignof(nbytes) < sizeof(max_align_t));
+	assert(nbytes < sizeof(max_align_t));
 	if (fa->current == NULL ||
 	    fa->current->allocated_bytes + nbytes >= FALLOC_PAGESZ)
 	{
@@ -60,8 +60,8 @@ falloc(struct falloc *fa, size_t nbytes)
 void
 falloc_destroy(struct falloc_pool *pool)
 {
-	struct falloc_page *page = pool->free;
-	pool->free = NULL;
+	struct falloc_page *page = atomic_load_explicit(&pool->free, memory_order_relaxed);
+	atomic_store_explicit(&pool->free, NULL, memory_order_relaxed);
 	while (page) {
 		struct falloc_page *this = page;
 		page = page->next;
@@ -72,7 +72,7 @@ falloc_destroy(struct falloc_pool *pool)
 void
 falloc_init(struct falloc_pool *pool, size_t n, struct falloc *allocs)
 {
-	pool->free = NULL;
+	atomic_store_explicit(&pool->free, NULL, memory_order_relaxed);
 	for (size_t i = 0; i < n; ++ i) {
 		allocs[i] = (struct falloc) {
 			.pool = pool,
@@ -106,6 +106,6 @@ falloc_reset(size_t n, struct falloc *allocs)
 		fa->current = NULL;
 	}
 	if (*tail)
-		(*tail)->next = pool->free;
-	pool->free = free;
+		(*tail)->next = atomic_load_explicit(&pool->free, memory_order_relaxed);
+	atomic_store_explicit(&pool->free, free, memory_order_relaxed);
 }
