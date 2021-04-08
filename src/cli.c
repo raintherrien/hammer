@@ -14,9 +14,9 @@
 #include <unistd.h> /* sysconf */
 #endif
 
-#define HMR_VERSION_MAJOR 0
-#define HMR_VERSION_MINOR 1
-#define HMR_VERSION_PATCH 0
+#define HAMMER_VERSION_MAJOR 0
+#define HAMMER_VERSION_MINOR 1
+#define HAMMER_VERSION_PATCH 0
 
 #define CHARVAL(C) (C - '0')
 
@@ -82,7 +82,7 @@ print_version(void)
 	printf("hammer version %d.%d.%d %d by Rain Therrien\n"
 	       "hammer is open source and freely distributable.\n"
 	       "https://github.com/raintherrien/hammer\n",
-	       HMR_VERSION_MAJOR, HMR_VERSION_MINOR, HMR_VERSION_PATCH,
+	       HAMMER_VERSION_MAJOR, HAMMER_VERSION_MINOR, HAMMER_VERSION_PATCH,
 	       year*10000+month*100+day);
 }
 

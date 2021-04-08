@@ -1,3 +1,6 @@
 [submodule "external/deadlock"]
 	path = external/deadlock
 	url = https://github.com/raintherrien/deadlock.git
+[submodule "external/delaunator-c"]
+	path = external/delaunator-c
+	url = https://github.com/raintherrien/delaunator-c.git

@@ -17,21 +17,35 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 find_package(deadlock REQUIRED)
+find_package(delaunator-c REQUIRED)
+find_package(PNG REQUIRED)
 
 # Add warnings
 # Note: add_compile_options propegates these options to e.g. examples.
 set(HAMMER_MSVC_WARNFLAGS /W4 /WX)
-set(HAMMER_OTHR_WARNFLAGS -Wall -Werror -Wextra -Wno-date-time -Wno-c++98-compat -Wno-implicit-fallthrough)
+set(HAMMER_OTHR_WARNFLAGS -Wall -Werror -Wextra)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+	set(HAMMER_OTHR_WARNFLAGS "${set(HAMMER_OTHR_WARNFLAGS} -Wno-date-time -Wno-c++98-compat -Wno-implicit-fallthrough")
+endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
+                   ${PROJECT_SOURCE_DIR}/src/image.c
+                   ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/salloc.c
                    ${PROJECT_SOURCE_DIR}/src/main.c
-                   ${PROJECT_SOURCE_DIR}/src/mem.c)
+                   ${PROJECT_SOURCE_DIR}/src/mem.c
+                   ${PROJECT_SOURCE_DIR}/src/poisson.c
+                   ${PROJECT_SOURCE_DIR}/src/ring.c
+                   ${PROJECT_SOURCE_DIR}/src/vector.c
+                   ${PROJECT_SOURCE_DIR}/src/well.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/large_scale_world_gen.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/worldgen.c)
 add_executable(hammer ${HAMMER_SOURCES})
-target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(hammer PRIVATE deadlock)
+target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include ${PNG_INCLUDE_DIR})
+target_link_libraries(hammer m deadlock delaunator-c ${PNG_LIBRARY})
 
 # Disable warnings about fopen in VS2019
 if(WIN32)
@@ -47,4 +61,9 @@ endif()
 option(HAMMER_BUILD_TUNE "Build for this architecture" OFF)
 if(HAMMER_BUILD_TUNE)
 	target_compile_options(hammer PUBLIC -march=native)
+endif()
+
+option(HAMMER_DEBUG_TECTONIC "Output images of tectonic process" OFF)
+if(HAMMER_DEBUG_TECTONIC)
+	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_TECTONIC)
 endif()

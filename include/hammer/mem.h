@@ -9,5 +9,7 @@
  * burning anyway so who cares.
  */
 void *xmalloc(size_t size);
+void *xcalloc(size_t nmemb, size_t size);
+void *xrealloc(void *ptr, size_t size);
 
 #endif /* HAMMER_MEM_H_ */
