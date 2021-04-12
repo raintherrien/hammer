@@ -98,11 +98,17 @@
 #define LITHOSPHERE_LEN 1024
 #define LITHOSPHERE_AREA (LITHOSPHERE_LEN * LITHOSPHERE_LEN)
 
-/* Limit number and area of segments to uint32_t */
+/*
+ * Limit area of segments to uint32_t and count to something reasonable so
+ * that we can allocate a segment collision set.
+ */
 #define MAX_SEGMENT_AREA  (((size_t)1<<32)-1)
-#define MAX_SEGMENT_COUNT (((size_t)1<<32)-1)
+#define MAX_SEGMENT_COUNT 128
+#define COLLISION_SET_BYTES (MAX_SEGMENT_COUNT * MAX_SEGMENT_COUNT / 8)
+_Static_assert(MAX_SEGMENT_COUNT * MAX_SEGMENT_COUNT % 8 == 0);
 
-#define NO_ELEMENT ((uint32_t)-1)
+#define NO_PLATE   ((uint32_t)-1)
+#define NO_SEGMENT ((uint16_t)-1)
 
 /*
  * An intra-plate collision identifies the lithosphere space coordinates of
@@ -126,6 +132,7 @@ struct segment {
 	uint32_t area;
 	uint32_t left, top;
 	uint32_t w, h;
+	uint16_t id;
 };
 
 struct plate {
@@ -150,7 +157,7 @@ struct plate {
 	 */
 	uint32_t left, top;
 	uint32_t w, h;
-	uint32_t in_segment[LITHOSPHERE_AREA];
+	uint16_t in_segment[LITHOSPHERE_AREA];
 };
 
 struct lithosphere {
@@ -160,6 +167,7 @@ struct lithosphere {
 	uint32_t generation;
 	uint32_t owner[LITHOSPHERE_AREA];
 	uint32_t prev_owner[LITHOSPHERE_AREA];
+	uint8_t  collision_set[COLLISION_SET_BYTES];
 };
 
 /*
@@ -205,10 +213,12 @@ static void plate_erode(struct plate *, const struct tectonic_uplift_opts *);
 
 /*
  * Transfers all mass from the source segment in the source plate to the
- * destination segment in the destination plate. in_segment *is* updated.
+ * destination segment in the destination plate. in_segment and owner are
+ * updated.
  */
-static void plate_swap_segment(struct plate *src, struct plate *dst,
-                               uint32_t src_si, uint32_t dst_si);
+static void plate_swap_segment(struct lithosphere *l,
+                               uint32_t src_pi, uint32_t dst_pi,
+                               uint16_t src_si, uint16_t dst_si);
 
 /*
  * Blit plate mass onto lithosphere, perform subduction and collision mass
@@ -234,23 +244,24 @@ static void plate_init_velocity(struct plate *, WELL512);
  * plate_growbfs_segment() is the breadth-first search component of finding
  * segments.
  */
-static void plate_growbfs_segment(struct plate *, uint32_t **bfs, uint32_t si,
+static void plate_growbfs_segment(struct plate *, uint32_t **bfs, uint16_t si,
                                   const struct tectonic_uplift_opts *);
-static void plate_segment(struct plate *, const struct tectonic_uplift_opts *);
+static void plate_segment(struct plate *, uint16_t *sid_ter,
+                          const struct tectonic_uplift_opts *);
 
 /*
  * Sets or adds crust to a plate, and assigns that mass to a segment, using
  * world coordinates. TODO: the add_not_overwrite param is me being lazy.
  */
 static void plate_set_mass(struct plate *, uint32_t wx, uint32_t wy,
-                           int add_not_overwrite, float mass, uint32_t si);
+                           int add_not_overwrite, float mass, uint16_t si);
 
 /*
  * Calculates the total area two segments overlap. This is a very expensive
  * operation.
  */
 static uint32_t segment_overlap(struct plate *p0, struct plate *p1,
-                                uint32_t si0, uint32_t si1);
+                                uint16_t si0, uint16_t si1);
 
 /*
  * Utility functions to wrap a potentially negative coordinate to the bounds
@@ -347,7 +358,7 @@ divergent_cell(struct lithosphere *l, uint32_t i, WELL512 rng,
 			new_mass = opts->rift_mass;
 	}
 	l->owner[i] = po;
-	plate_set_mass(l->plates + po, x, y, 0, new_mass, NO_ELEMENT);
+	plate_set_mass(l->plates + po, x, y, 0, new_mass, NO_SEGMENT);
 }
 
 static void
@@ -368,7 +379,7 @@ lithosphere_create_plates(struct lithosphere *l, WELL512 rng,
 		struct plate *p = vector_pushz(&l->plates);
 		reclaim: ;
 		uint32_t claim = WELL512i(rng) % LITHOSPHERE_AREA;
-		if (l->owner[claim] != NO_ELEMENT)
+		if (l->owner[claim] != NO_PLATE)
 			goto reclaim; /* already claimed */
 		/* claim and mark as growing */
 		l->owner[claim] = pi;
@@ -415,7 +426,7 @@ lithosphere_create_plates(struct lithosphere *l, WELL512 rng,
 			for (size_t n = 0; n < 4; ++ n) {
 				size_t i = (n + rng_offset) % 4;
 				uint32_t neighbor = neighbors[i];
-				if (l->owner[neighbor] != NO_ELEMENT)
+				if (l->owner[neighbor] != NO_PLATE)
 					continue;
 				/* claim and mark as growing */
 				l->owner[neighbor] = l->owner[src];
@@ -557,13 +568,15 @@ lithosphere_update(struct lithosphere *l, WELL512 rng,
 	memset(l->mass, 0, LITHOSPHERE_AREA * sizeof(*l->mass));
 	memset(l->owner, 0xFF, LITHOSPHERE_AREA * sizeof(*l->owner));
 
+	/* Segment plates before creating collisions */
+	uint16_t sid_ter = 0;
+	memset(l->collision_set, 0, COLLISION_SET_BYTES);
+	for (uint32_t pi = 0; pi < plate_count; ++ pi)
+		plate_segment(l->plates + pi, &sid_ter, opts);
+
 	/* Blit plate information to the lithosphere, identify collisions */
 	for (uint32_t pi = 0; pi < plate_count; ++ pi)
 		plate_blit(l, pi, opts);
-
-	/* Segment plates before resolving collisions */
-	for (uint32_t pi = 0; pi < plate_count; ++ pi)
-		plate_segment(l->plates + pi, opts);
 
 	/*
 	 * Resolve collisions. Note: this has not been packed away in its own
@@ -573,21 +586,23 @@ lithosphere_update(struct lithosphere *l, WELL512 rng,
 	 * duplicates before this point.
 	 */
 	struct segment *last_s0 = NULL, *last_s1 = NULL;
-	while (vector_size(l->collisions)) {
-		struct collision c = *vector_tail(l->collisions);
-		vector_pop(&l->collisions);
-		size_t dst = c.y * LITHOSPHERE_LEN + c.x;
-		struct plate *p0 = l->plates + c.plate_index;
+	size_t collision_count = vector_size(l->collisions);
+	for (size_t i = 0; i < collision_count; ++ i) {
+		struct collision *c = l->collisions + i;
+		size_t dst = c->y * LITHOSPHERE_LEN + c->x;
+		if (c->plate_index == l->owner[dst])
+			continue;
+		struct plate *p0 = l->plates + c->plate_index;
 		struct plate *p1 = l->plates + l->owner[dst];
 		uint32_t p0xy[2];
 		uint32_t p1xy[2];
-		lithosphere_to_plate(p0, c.x, c.y, p0xy);
-		lithosphere_to_plate(p1, c.x, c.y, p1xy);
+		lithosphere_to_plate(p0, c->x, c->y, p0xy);
+		lithosphere_to_plate(p1, c->x, c->y, p1xy);
 		size_t i0 = p0xy[1] * LITHOSPHERE_LEN + p0xy[0];
 		size_t i1 = p1xy[1] * LITHOSPHERE_LEN + p1xy[0];
-		uint32_t si0 = p0->in_segment[i0];
-		uint32_t si1 = p1->in_segment[i1];
-		if (si0 != NO_ELEMENT && si1 != NO_ELEMENT) {
+		uint16_t si0 = p0->in_segment[i0];
+		uint16_t si1 = p1->in_segment[i1];
+		if (si0 != NO_SEGMENT && si1 != NO_SEGMENT) {
 			struct segment *s0 = p0->segments + si0;
 			struct segment *s1 = p1->segments + si1;
 			if (last_s0 == s0 && last_s1 == s1) {
@@ -604,12 +619,13 @@ lithosphere_update(struct lithosphere *l, WELL512 rng,
 			 */
 			if (overlap / smaller_area >= opts->merge_ratio) {
 				if (s0->area > s1->area)
-					plate_swap_segment(p1, p0, si1, si0);
+					plate_swap_segment(l, l->owner[dst], c->plate_index, si1, si0);
 				else
-					plate_swap_segment(p0, p1, si0, si1);
+					plate_swap_segment(l, c->plate_index, l->owner[dst], si0, si1);
 			}
 		}
 	}
+	vector_clear(&l->collisions);
 
 	/*
 	 * Any cell that isn't claimed at this point is a divergent boundary.
@@ -623,7 +639,7 @@ lithosphere_update(struct lithosphere *l, WELL512 rng,
 	 * what I had intended.
 	 */
 	for (uint32_t i = 0; i < LITHOSPHERE_AREA; ++ i)
-		if (l->owner[i] == NO_ELEMENT)
+		if (l->owner[i] == NO_PLATE)
 			divergent_cell(l, i, rng, opts);
 
 	/* Apply erosion */
@@ -735,9 +751,12 @@ plate_erode(struct plate *p, const struct tectonic_uplift_opts *opts)
 }
 
 static void
-plate_swap_segment(struct plate *src, struct plate *dst,
-                   uint32_t src_si, uint32_t dst_si)
+plate_swap_segment(struct lithosphere *l,
+                   uint32_t src_pi, uint32_t dst_pi,
+                   uint16_t src_si, uint16_t dst_si)
 {
+        struct plate *src = l->plates + src_pi;
+        struct plate *dst = l->plates + dst_pi;
 	struct segment *src_segment = src->segments + src_si;
 	for (uint32_t sy = 0; sy < src_segment->h; ++ sy)
 	for (uint32_t sx = 0; sx < src_segment->w;  ++ sx) {
@@ -749,7 +768,8 @@ plate_swap_segment(struct plate *src, struct plate *dst,
 			plate_to_lithosphere(src, px, py, wxy);
 			float mass = src->mass[pi];
 			plate_set_mass(dst, wxy[0], wxy[1], 1, mass, dst_si);
-			src->in_segment[pi] = NO_ELEMENT;
+			l->owner[wxy[1] * LITHOSPHERE_LEN + wxy[0]] = dst_pi;
+			src->in_segment[pi] = NO_SEGMENT;
 			src->mass[pi] = 0;
 		}
 	}
@@ -761,7 +781,7 @@ plate_swap_segment(struct plate *src, struct plate *dst,
 }
 
 static uint32_t
-segment_overlap(struct plate *p0, struct plate *p1, uint32_t si0, uint32_t si1)
+segment_overlap(struct plate *p0, struct plate *p1, uint16_t si0, uint16_t si1)
 {
 	struct segment *s0 = p0->segments + si0;
 	struct segment *s1 = p1->segments + si1;
@@ -806,7 +826,7 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 		size_t src = pxy[1] * LITHOSPHERE_LEN + pxy[0];
 		if (p->mass[src] <= 0)
 			continue;
-		if (l->owner[dst] == NO_ELEMENT) {
+		if (l->owner[dst] == NO_PLATE) {
 			/* No collision! Claim this cell */
 			l->owner[dst] = pi;
 			l->mass[dst] = p->mass[src];
@@ -834,7 +854,7 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 			l->mass[dst] += xfer;
 
 			if (p->mass[src] <= 0) {
-				p->in_segment[src] = NO_ELEMENT;
+				p->in_segment[src] = NO_SEGMENT;
 				continue;
 			}
 		}
@@ -855,7 +875,7 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 
 			/* If last plate is gone, claim cell */
 			if (l->mass[dst] <= 0) {
-				prev_plate->in_segment[prev_src] = NO_ELEMENT;
+				prev_plate->in_segment[prev_src] = NO_SEGMENT;
 				l->owner[dst] = pi;
 				l->mass[dst] = p->mass[src];
 				continue;
@@ -873,18 +893,29 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 			l->mass[dst] += xfer;
 
 			if (p->mass[src] <= 0) {
-				p->in_segment[src] = NO_ELEMENT;
+				p->in_segment[src] = NO_SEGMENT;
 				continue;
 			}
 		}
 		/*
-		 * Record a collision between the plate owning this
-		 * cell and this plate.
+		 * Record a collision between the segment owning this cell and
+		 * this segment.
 		 */
-		vector_push(&l->collisions, (struct collision) {
-			.plate_index = pi,
-			.x = x, .y = y
-		});
+		uint16_t siA = p->in_segment[src];
+		uint16_t siB = prev_plate->in_segment[prev_src];
+		if (siA != NO_SEGMENT && siB != NO_SEGMENT) {
+			uint16_t si0 = siA < siB ? siA : siB;
+			uint16_t si1 = siA < siB ? siB : siA;
+			uint16_t cs = si0 * MAX_SEGMENT_COUNT + si1;
+			unsigned char m = 1 << (cs % 8);
+			if (l->collision_set[cs / 8] & m)
+				continue;
+			l->collision_set[cs / 8] |= m;
+			vector_push(&l->collisions, (struct collision) {
+				.plate_index = pi,
+				.x = x, .y = y
+			});
+		}
 	}
 }
 
@@ -895,7 +926,7 @@ plate_destroy(struct plate *p)
 }
 
 static void
-plate_growbfs_segment(struct plate *p, uint32_t **bfs, uint32_t si,
+plate_growbfs_segment(struct plate *p, uint32_t **bfs, uint16_t si,
                       const struct tectonic_uplift_opts *opts)
 {
 	/*
@@ -914,7 +945,7 @@ plate_growbfs_segment(struct plate *p, uint32_t **bfs, uint32_t si,
 			uint32_t py = wrap(srcy + yy);
 			uint32_t px = wrap(srcx + xx);
 			uint32_t neighbor = py * LITHOSPHERE_LEN + px;
-			if (p->in_segment[neighbor] == NO_ELEMENT &&
+			if (p->in_segment[neighbor] == NO_SEGMENT &&
 			    p->mass[neighbor] >= TECTONIC_CONTINENT_MASS)
 			{
 				/* claim and mark as new source */
@@ -968,7 +999,8 @@ plate_init_velocity(struct plate *p, WELL512 rng)
 }
 
 static void
-plate_segment(struct plate *p, const struct tectonic_uplift_opts *opts)
+plate_segment(struct plate *p, uint16_t *sid_ter,
+              const struct tectonic_uplift_opts *opts)
 {
 	vector_clear(&p->segments);
 	memset(p->in_segment, 0xFF, LITHOSPHERE_AREA * sizeof(*p->in_segment));
@@ -979,21 +1011,24 @@ plate_segment(struct plate *p, const struct tectonic_uplift_opts *opts)
 	for (uint32_t x = 0; x < p->w;  ++ x) {
 		size_t i = wrap(p->top  + y) * LITHOSPHERE_LEN +
 			   wrap(p->left + x);
-		if (p->in_segment[i] != NO_ELEMENT ||
+		if (p->in_segment[i] != NO_SEGMENT ||
 		    p->mass[i] < TECTONIC_CONTINENT_MASS)
 		{
 			continue;
 		}
 		/* Create segment */
-		uint32_t si = vector_size(p->segments);
-		if (si == MAX_SEGMENT_COUNT)
+		uint16_t si = vector_size(p->segments);
+		if (si == MAX_SEGMENT_COUNT) {
+			fprintf(stderr, "Max segment count reached\n");
 			continue;
+		}
 		vector_push(&p->segments, (struct segment) {
-			.area   = 1,
-			.left  = p->left + x,
-			.top   = p->top  + y,
-			.w  = 1,
-			.h = 1
+			.area = 1,
+			.left = p->left + x,
+			.top  = p->top  + y,
+			.w    = 1,
+			.h    = 1,
+			.id   = ++ *sid_ter
 		});
 		/* Claim first cell */
 		p->in_segment[i] = si;
@@ -1007,7 +1042,7 @@ plate_segment(struct plate *p, const struct tectonic_uplift_opts *opts)
 
 static void
 plate_set_mass(struct plate *p, uint32_t wx, uint32_t wy,
-               int add_not_overwrite, float m, uint32_t si)
+               int add_not_overwrite, float m, uint16_t si)
 {
 	uint32_t pxy[2];
 	lithosphere_to_plate(p, wx, wy, pxy);
@@ -1043,9 +1078,9 @@ plate_set_mass(struct plate *p, uint32_t wx, uint32_t wy,
 	else
 		p->mass[i] = m;
 	if (p->in_segment[i] != si) {
-		if (p->in_segment[i] != NO_ELEMENT)
+		if (p->in_segment[i] != NO_SEGMENT)
 			-- p->segments[p->in_segment[i]].area;
-		if (si != NO_ELEMENT)
+		if (si != NO_SEGMENT)
 			++ p->segments[si].area;
 		p->in_segment[i] = si;
 	}
