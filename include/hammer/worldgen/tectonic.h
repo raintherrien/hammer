@@ -6,6 +6,10 @@
 /* Any mass equal to or higher than continent mass is above sea level */
 #define TECTONIC_CONTINENT_MASS   1.0f
 
+/* Lithosphere dimensions */
+#define LITHOSPHERE_LEN 1024
+#define LITHOSPHERE_AREA (LITHOSPHERE_LEN * LITHOSPHERE_LEN)
+
 struct tectonic_uplift_opts {
 	unsigned long long seed;
 	/*

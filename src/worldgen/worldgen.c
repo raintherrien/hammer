@@ -16,12 +16,11 @@ worldgen_create(struct worldgen_pkg *wg, unsigned long long seed, unsigned long 
 		xperrorva("World size of %lu would cause size_t overflow", size);
 		abort();
 	}
-	size_t area = size * size;
-	float * restrict uplift =        xmalloc(area * sizeof(*uplift));
-	float * restrict temperature =   xmalloc(area * sizeof(*temperature));
-	float * restrict precipitation = xmalloc(area * sizeof(*precipitation));
-	float * restrict elevation =     xmalloc(area * sizeof(*elevation));
-	float * restrict wind_velocity = xmalloc(2 * area * sizeof(*wind_velocity));
+	float * restrict uplift =        xmalloc(LITHOSPHERE_AREA * sizeof(*uplift));
+	float * restrict temperature =   xmalloc(LITHOSPHERE_AREA * sizeof(*temperature));
+	float * restrict precipitation = xmalloc(LITHOSPHERE_AREA * sizeof(*precipitation));
+	float * restrict elevation =     xmalloc(LITHOSPHERE_AREA * sizeof(*elevation));
+	float * restrict wind_velocity = xmalloc(LITHOSPHERE_AREA * 2 * sizeof(*wind_velocity));
 
 	struct tectonic_uplift_opts opts = TECTONIC_UPLIFT_OPTS_DEFAULTS;
 	opts.seed = seed;

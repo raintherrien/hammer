@@ -4,6 +4,7 @@
 #include "hammer/vector.h"
 #include "hammer/well.h"
 #include "hammer/worldgen/tectonic.h"
+#include <assert.h>
 #include <float.h>
 #include <math.h>
 #include <stddef.h>
@@ -93,10 +94,6 @@
  *   no sense to me. This can be worked around with collision list ordering
  *   and memoization and I'm happy enough with it.
  */
-
-/* Lithosphere dimensions */
-#define LITHOSPHERE_LEN 1024
-#define LITHOSPHERE_AREA (LITHOSPHERE_LEN * LITHOSPHERE_LEN)
 
 /*
  * Limit area of segments to uint32_t and count to something reasonable so
@@ -1018,10 +1015,9 @@ plate_segment(struct plate *p, uint16_t *sid_ter,
 		}
 		/* Create segment */
 		uint16_t si = vector_size(p->segments);
-		if (si == MAX_SEGMENT_COUNT) {
-			fprintf(stderr, "Max segment count reached\n");
+		assert(si < MAX_SEGMENT_COUNT);
+		if (si == MAX_SEGMENT_COUNT)
 			continue;
-		}
 		vector_push(&p->segments, (struct segment) {
 			.area = 1,
 			.left = p->left + x,
