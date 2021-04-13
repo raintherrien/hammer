@@ -1,5 +1,6 @@
 #include "hammer/cli.h"
 #include "hammer/error.h"
+#include "hammer/glthread.h"
 #include "hammer/mem.h"
 #include "hammer/worldgen/worldgen.h"
 #include <deadlock/dl.h>
@@ -32,12 +33,22 @@ main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	if (glthread_create())
+		goto glthread_create_failed;
+
 	if (dlmain(&entry_exit.task, worker_entry, NULL)) {
-		perror("Error in dlmain");
-		return EXIT_FAILURE;
+		xperror("Error creating deadlock scheduler");
+		goto dlmain_failed;
 	}
 
+	glthread_destroy();
+
 	return EXIT_SUCCESS;
+
+dlmain_failed:
+	glthread_destroy();
+glthread_create_failed:
+	return EXIT_FAILURE;
 }
 
 static void
@@ -45,6 +56,7 @@ entry_run(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY(struct entry_exit_pkg, entry, task);
 	entry->worldgen = xmalloc(sizeof(*entry->worldgen));
+	printf("seed: %llu\n", entry->rtargs.seed);
 	worldgen_create(entry->worldgen, entry->rtargs.seed, entry->rtargs.size);
 	dlcontinuation(&entry->task, exit_run);
 	dlnext(&entry->worldgen->task, &entry->task);

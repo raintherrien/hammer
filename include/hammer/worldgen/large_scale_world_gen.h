@@ -1,6 +1,7 @@
 #ifndef HAMMER_WORLDGEN_LARGE_SCALE_WORLD_GEN_H_
 #define HAMMER_WORLDGEN_LARGE_SCALE_WORLD_GEN_H_
 
+#include "hammer/worldgen/climate.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <deadlock/dl.h>
@@ -28,28 +29,8 @@ struct large_scale_world_gen_pkg {
 	 * change of elevation before applying erosion.
 	 */
 	float * restrict uplift;
-	/*
-	 * Sunlight is the range of a linear function that approximates the
-	 * wobble of a planet throughout the year (which is the domain). This
-	 * directly affects temperature, like seasons on Earth.
-	 */
-	float sunlight_latitude_extent_0;
-	float sunlight_latitude_extent_1;
-	/*
-	 * Temperature is gained from sunlight and convected by wind.
-	 */
-	float * restrict temperature;
-	/*
-	 * The wind velocity field is updated to reflect convection of air
-	 * from colder areas to warmer areas.
-	 * Note: this is an array of float[2] vectors.
-	 */
-	float * restrict wind_velocity;
-	/*
-	 * Precipitation is gained from bodies of water and lost over land
-	 * masses, especially at altitude. Precipitation is advected by wind.
-	 */
-	float * restrict precipitation;
+	/* TODO: Document */
+	struct climate c;
 	/*
 	 * Elevation is increased by tectonic uplift and reduced by erosion.
 	 * Fluvial and thermal erosion are functions of precipitation and

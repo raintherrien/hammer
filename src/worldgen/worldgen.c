@@ -1,6 +1,7 @@
 #include "hammer/worldgen/worldgen.h"
 #include "hammer/error.h"
 #include "hammer/mem.h"
+#include "hammer/worldgen/climate.h"
 #include "hammer/worldgen/tectonic.h"
 #include <errno.h>
 #include <stdio.h>
@@ -16,30 +17,20 @@ worldgen_create(struct worldgen_pkg *wg, unsigned long long seed, unsigned long 
 		xperrorva("World size of %lu would cause size_t overflow", size);
 		abort();
 	}
-	float * restrict uplift =        xmalloc(LITHOSPHERE_AREA * sizeof(*uplift));
-	float * restrict temperature =   xmalloc(LITHOSPHERE_AREA * sizeof(*temperature));
-	float * restrict precipitation = xmalloc(LITHOSPHERE_AREA * sizeof(*precipitation));
-	float * restrict elevation =     xmalloc(LITHOSPHERE_AREA * sizeof(*elevation));
-	float * restrict wind_velocity = xmalloc(LITHOSPHERE_AREA * 2 * sizeof(*wind_velocity));
-
-	struct tectonic_uplift_opts opts = TECTONIC_UPLIFT_OPTS_DEFAULTS;
-	opts.seed = seed;
-	tectonic_uplift(uplift, &opts);
-	/* TODO: junk values. large_scale_world_gen is a stub right now */
-	float sunlight_latitude_extent_0 = 0.25f;
-	float sunlight_latitude_extent_1 = 0.75f;
+	struct tectonic_opts opts = {
+		TECTONIC_OPTS_DEFAULTS,
+		.seed = seed
+	};
+	float *uplift = tectonic_uplift(&opts, size);
+	struct climate c = generate_climate(uplift, size);
 
 	*wg = (struct worldgen_pkg) {
 		.task = DL_TASK_INIT(worldgen_iteration),
 		.large_scale_world_gen_pkg = {
 			.task = DL_TASK_INIT(large_scale_world_gen_iteration),
 			.uplift = uplift,
-			.sunlight_latitude_extent_0 = sunlight_latitude_extent_0,
-			.sunlight_latitude_extent_1 = sunlight_latitude_extent_1,
-			.temperature = temperature,
-			.wind_velocity = wind_velocity,
-			.precipitation = precipitation,
-			.elevation = elevation,
+			.c = c,
+			.elevation = NULL,
 			.seed = seed,
 			.size = size
 		},
@@ -50,11 +41,15 @@ worldgen_create(struct worldgen_pkg *wg, unsigned long long seed, unsigned long 
 void
 worldgen_destroy(struct worldgen_pkg *wg)
 {
+	/* TODO: Obviously doesn't belong here */
 	free(wg->large_scale_world_gen_pkg.uplift);
-	free(wg->large_scale_world_gen_pkg.temperature);
-	free(wg->large_scale_world_gen_pkg.precipitation);
+	free(wg->large_scale_world_gen_pkg.c.moisture);
+	free(wg->large_scale_world_gen_pkg.c.precipitation);
+	free(wg->large_scale_world_gen_pkg.c.pressure);
+	free(wg->large_scale_world_gen_pkg.c.pressure_flow);
+	free(wg->large_scale_world_gen_pkg.c.temperature);
+	free(wg->large_scale_world_gen_pkg.c.wind_velocity);
 	free(wg->large_scale_world_gen_pkg.elevation);
-	free(wg->large_scale_world_gen_pkg.wind_velocity);
 }
 
 static void

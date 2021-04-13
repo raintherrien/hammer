@@ -6,11 +6,7 @@
 /* Any mass equal to or higher than continent mass is above sea level */
 #define TECTONIC_CONTINENT_MASS   1.0f
 
-/* Lithosphere dimensions */
-#define LITHOSPHERE_LEN 1024
-#define LITHOSPHERE_AREA (LITHOSPHERE_LEN * LITHOSPHERE_LEN)
-
-struct tectonic_uplift_opts {
+struct tectonic_opts {
 	unsigned long long seed;
 	/*
 	 * Collision and subduction xfer factors define how much mass is
@@ -82,8 +78,7 @@ struct tectonic_uplift_opts {
 	unsigned rift_ticks;
 };
 
-#define TECTONIC_UPLIFT_OPTS_DEFAULTS \
-(struct tectonic_uplift_opts) {       \
+#define TECTONIC_OPTS_DEFAULTS        \
 	.collision_xfer   = 0.0125f,  \
 	.subduction_xfer  = 0.0125f,  \
 	.merge_ratio      = 0.125f,   \
@@ -99,9 +94,8 @@ struct tectonic_uplift_opts {
 	.segment_radius   = 2,        \
 	.divergent_radius = 5,        \
 	.erosion_ticks    = 20,       \
-	.rift_ticks       = 60,       \
-}
+	.rift_ticks       = 60
 
-void tectonic_uplift(float *uplift, const struct tectonic_uplift_opts *);
+float *tectonic_uplift(const struct tectonic_opts *, unsigned long size);
 
 #endif /* HAMMER_WORLDGEN_TECTONIC_H_ */

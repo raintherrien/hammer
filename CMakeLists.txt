@@ -40,17 +40,24 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/large_scale_world_gen.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/worldgen.c)
+
+if(WIN32)
+	# Disable warnings about fopen in VS2019
+	target_compile_definitions(hammer PRIVATE _CRT_SECURE_NO_WARNINGS)
+	set(HAMMER_SOURCES ${HAMMER_SOURCES}
+	                   ${PROJECT_SOURCE_DIR}/src/win32/glthread.c)
+else()
+	set(HAMMER_SOURCES ${HAMMER_SOURCES}
+	                   ${PROJECT_SOURCE_DIR}/src/posix/glthread.c)
+endif()
+
 add_executable(hammer ${HAMMER_SOURCES})
 target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include ${PNG_INCLUDE_DIR})
 target_link_libraries(hammer m deadlock delaunator-c ${PNG_LIBRARY})
-
-# Disable warnings about fopen in VS2019
-if(WIN32)
-	target_compile_definitions(hammer PRIVATE _CRT_SECURE_NO_WARNINGS)
-endif()
 
 option(HAMMER_BUILD_SAN "Build with sanitizers" OFF)
 if(HAMMER_BUILD_SAN)
@@ -66,4 +73,9 @@ endif()
 option(HAMMER_DEBUG_TECTONIC "Output images of tectonic process" OFF)
 if(HAMMER_DEBUG_TECTONIC)
 	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_TECTONIC)
+endif()
+
+option(HAMMER_DEBUG_CLIMATE "Output images of climate" OFF)
+if(HAMMER_DEBUG_CLIMATE)
+	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_CLIMATE)
 endif()
