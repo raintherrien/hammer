@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <png.h>
+#include <SDL2/SDL_image.h>
 
 static void
 errorfn(png_structp png_ptr, png_const_charp msg)
@@ -139,4 +140,48 @@ error_creating_png_info:
 	png_destroy_write_struct(&png_ptr, NULL);
 error_creating_png_struct:
 	return errno;
+}
+
+GLuint
+load_texture(const char *filename, int *width, int *height)
+{
+	SDL_Surface *surface = IMG_Load(filename);
+	if (!surface) {
+		fprintf(stderr, ANSI_ESC_BOLDRED
+		                "Error loading image file %s: %s\n"
+		                ANSI_ESC_BOLDRED,
+		                filename,
+		                SDL_GetError());
+		return 0;
+	}
+
+	GLenum format;
+	GLenum internalformat;
+	switch (surface->format->BytesPerPixel) {
+	case 4:
+		format = (SDL_BYTEORDER == SDL_BIG_ENDIAN ? GL_BGRA : GL_RGBA);
+		internalformat = GL_RGBA;
+		break;
+	default /*3*/:
+		format = (SDL_BYTEORDER == SDL_BIG_ENDIAN ? GL_BGR : GL_RGB);
+		internalformat = GL_RGB;
+		break;
+	}
+
+	GLuint texture;
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
+	                            internalformat,
+	                            surface->w, surface->h,
+	                            0, /* border */
+	                            format,
+	                            GL_UNSIGNED_BYTE,
+	                            surface->pixels);
+	if (width)
+		*width = surface->w;
+	if (height)
+		*height = surface->h;
+	SDL_FreeSurface(surface);
+	return texture;
 }

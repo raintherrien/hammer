@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <deadlock/dl.h>
+#include <GL/glew.h>
 
 /*
  * Creates a heightmap image and returns zero on success, or sets and returns
@@ -28,5 +29,7 @@ int write_rgb(
 	size_t       width,
 	size_t       height
 );
+
+GLuint load_texture(const char *filename, int *width, int *height);
 
 #endif /* HAMMER_IMAGE_H_ */

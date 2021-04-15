@@ -50,11 +50,8 @@ main_menu_gl_frame(void *_)
 	if (window_startframe())
 		return (void *)1;
 
-	float title_width  = window.width / 2;
-	float title_height = title_width / gui_text_ratio;
-	float title_left   = window.width / 4;
-	float title_top    = window.height / 4;
-	gui_text("Hammer", title_left, title_top, title_width, title_height);
+	gui_text("Hammer v0.0.0", 0, 16 / gui_font_ratio, 13 * 16, 16 / gui_font_ratio);
+	gui_text("What an absolute shit show", 0, 0, 26 * 16, 16 / gui_font_ratio);
 
 	gui_render();
 

@@ -15,6 +15,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(cglm     REQUIRED)
 find_package(deadlock REQUIRED)
 find_package(delaunator-c REQUIRED)
 find_package(GLEW    REQUIRED)
@@ -65,12 +66,21 @@ endif()
 
 add_executable(hammer ${HAMMER_SOURCES})
 target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include ${PNG_INCLUDE_DIR})
-target_link_libraries(hammer m deadlock delaunator-c ${PNG_LIBRARY} GL GLEW SDL2 SDL2_image)
+target_link_libraries(hammer m
+                             cglm
+                             deadlock
+                             delaunator-c
+                             ${PNG_LIBRARY}
+                             GL
+                             GLEW
+                             SDL2
+                             SDL2_image)
 
-add_custom_command(TARGET hammer POST_BUILD
+add_custom_target(hammer_resources
                    COMMAND ${CMAKE_COMMAND} -E copy_directory
                            ${PROJECT_SOURCE_DIR}/resources/
                            ${CMAKE_CURRENT_BINARY_DIR}/resources/)
+add_dependencies(hammer hammer_resources)
 
 option(HAMMER_BUILD_SAN "Build with sanitizers" OFF)
 if(HAMMER_BUILD_SAN)

@@ -1,7 +1,7 @@
 #ifndef HAMMER_GUI_H_
 #define HAMMER_GUI_H_
 
-#define gui_text_ratio 1
+extern float gui_font_ratio;
 
 void gui_create(void);
 void gui_destroy(void);
