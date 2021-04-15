@@ -3,11 +3,18 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <stdlib.h> /* exit */
 
 enum {
 	HAMMER_E_EXIT = INT_MIN,
 	HAMMER_E_MAXVAL, /* Used to construct error description table */
 };
+
+/*
+ * ANSI escape codes to change our foreground text bold red and reset.
+ */
+#define ANSI_ESC_BOLDRED "\033[31;1m"
+#define ANSI_ESC_RESET "\033[0m"
 
 /*
  * xperror writes an error message to stderr, followed by the error

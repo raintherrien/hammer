@@ -13,10 +13,9 @@ static void worldgen_complete(DL_TASK_ARGS);
 void
 worldgen_create(struct worldgen_pkg *wg, unsigned long long seed, unsigned long size)
 {
-	if ((size_t)size > SIZE_MAX / size) {
-		xperrorva("World size of %lu would cause size_t overflow", size);
-		abort();
-	}
+	if ((size_t)size > SIZE_MAX / size)
+		xpanicva("World size of %lu would cause size_t overflow", size);
+
 	struct tectonic_opts opts = {
 		TECTONIC_OPTS_DEFAULTS,
 		.seed = seed

@@ -46,8 +46,7 @@ large_scale_world_gen_create(struct large_scale_world_gen_pkg *pkg)
 	                pkg->state->points,
 	                pkg->state->points_size) != 0)
 	{
-		xperror("Error triangulating Poisson distribution");
-		abort();
+		xpanic("Error triangulating Poisson distribution");
 	}
 	// TODO: Generate nodes, calculate drainage area
 	pkg->state->nodes = NULL;

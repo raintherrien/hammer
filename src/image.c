@@ -9,7 +9,7 @@ static void
 errorfn(png_structp png_ptr, png_const_charp msg)
 {
 	(void) png_ptr;
-	xperrorva("libpng error %s", msg);
+	xpanicva("libpng error %s", msg);
 }
 
 static void
@@ -128,7 +128,8 @@ int write_rgb(
 
 	png_write_end(png_ptr, info_ptr);
 	png_destroy_write_struct(&png_ptr, &info_ptr);
-	if (fclose(pngfile) != 0) xperror("Error closing image file");
+	if (fclose(pngfile) != 0)
+		xperror("Error closing image file");
 
 	return 0;
 

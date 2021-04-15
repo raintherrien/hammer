@@ -15,15 +15,18 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
-find_package(Threads REQUIRED)
 find_package(deadlock REQUIRED)
 find_package(delaunator-c REQUIRED)
-find_package(PNG REQUIRED)
+find_package(GLEW    REQUIRED)
+find_package(OpenGL  REQUIRED)
+find_package(PNG     REQUIRED)
+find_package(SDL2    REQUIRED COMPONENTS SDL2::SDL2 SDL2::main SDL2::image)
+find_package(Threads REQUIRED)
 
 # Add warnings
 # Note: add_compile_options propegates these options to e.g. examples.
 set(HAMMER_MSVC_WARNFLAGS /W4 /WX)
-set(HAMMER_OTHR_WARNFLAGS -Wall -Werror -Wextra)
+set(HAMMER_OTHR_WARNFLAGS -Wall -Wextra)
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	set(HAMMER_OTHR_WARNFLAGS "${set(HAMMER_OTHR_WARNFLAGS} -Wno-date-time -Wno-c++98-compat -Wno-implicit-fallthrough")
 endif()
@@ -31,6 +34,10 @@ add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMME
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
+                   ${PROJECT_SOURCE_DIR}/src/file.c
+                   ${PROJECT_SOURCE_DIR}/src/game_states/main_menu.c
+                   ${PROJECT_SOURCE_DIR}/src/glsl.c
+                   ${PROJECT_SOURCE_DIR}/src/gui.c
                    ${PROJECT_SOURCE_DIR}/src/image.c
                    ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/salloc.c
@@ -40,6 +47,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
+                   ${PROJECT_SOURCE_DIR}/src/window.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/large_scale_world_gen.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
@@ -57,7 +65,12 @@ endif()
 
 add_executable(hammer ${HAMMER_SOURCES})
 target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include ${PNG_INCLUDE_DIR})
-target_link_libraries(hammer m deadlock delaunator-c ${PNG_LIBRARY})
+target_link_libraries(hammer m deadlock delaunator-c ${PNG_LIBRARY} GL GLEW SDL2 SDL2_image)
+
+add_custom_command(TARGET hammer POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E copy_directory
+                           ${PROJECT_SOURCE_DIR}/resources/
+                           ${CMAKE_CURRENT_BINARY_DIR}/resources/)
 
 option(HAMMER_BUILD_SAN "Build with sanitizers" OFF)
 if(HAMMER_BUILD_SAN)
@@ -70,12 +83,17 @@ if(HAMMER_BUILD_TUNE)
 	target_compile_options(hammer PUBLIC -march=native)
 endif()
 
-option(HAMMER_DEBUG_TECTONIC "Output images of tectonic process" OFF)
-if(HAMMER_DEBUG_TECTONIC)
-	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_TECTONIC)
-endif()
-
 option(HAMMER_DEBUG_CLIMATE "Output images of climate" OFF)
 if(HAMMER_DEBUG_CLIMATE)
 	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_CLIMATE)
+endif()
+
+option(HAMMER_DEBUG_OPENGL "Write OpenGL debug information to stderr" OFF)
+if(HAMMER_DEBUG_OPENGL)
+	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_OPENGL)
+endif()
+
+option(HAMMER_DEBUG_TECTONIC "Output images of tectonic process" OFF)
+if(HAMMER_DEBUG_TECTONIC)
+	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_TECTONIC)
 endif()
