@@ -76,6 +76,7 @@ void *ring_grow_(void *r, size_t memb_size);
 #define ring_push(RPTR,...) ( *(RPTR) = ring_maybegrow_(*(RPTR)), \
                               (*(RPTR))[ring_next_(*RPTR)] = (__VA_ARGS__) )
 #define ring_pop(RPTR) ( (void) ++ ring_sb_(*RPTR)->head )
+#define ring_clear(RPTR) ( ring_sb_(*RPTR)->head = ring_sb_(*RPTR)->tail = 0 )
 #define ring_size(R) ( ring_sb_(R)->tail - ring_sb_(R)->head )
 #define ring_head(R) ( &(R)[ring_sb_(R)->head & (ring_sb_(R)->capacity-1)] )
 #define ring_tail(R) ( &(R)[ring_sb_(R)->tail & (ring_sb_(R)->capacity-1)] )

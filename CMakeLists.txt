@@ -47,6 +47,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/poisson.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
+                   ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
                    ${PROJECT_SOURCE_DIR}/src/window.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c

@@ -118,6 +118,9 @@ window_create(void)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	/* 4x MSAA */
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
 	window.glcontext = SDL_GL_CreateContext(window.handle);
 	if (!window.glcontext) {
@@ -184,6 +187,9 @@ window_startframe(void)
 
 	window.motion_x = 0;
 	window.motion_y = 0;
+	window.scroll = 0;
+	window.text_input_len = 0;
+	memset(window.text_input, 0, MAX_TEXT_INPUT_LEN * sizeof(*window.text_input));
 
 	vector_clear(&window.frame_events);
 
@@ -191,16 +197,48 @@ window_startframe(void)
 	while (SDL_PollEvent(&e)) {
 		vector_push(&window.frame_events, e);
 		switch (e.type) {
+		case SDL_KEYDOWN:
+			if (window.text_input_len >= MAX_TEXT_INPUT_LEN)
+				break;
+			switch (e.key.keysym.scancode) {
+			case SDL_SCANCODE_RETURN:
+				window.text_input[window.text_input_len ++] = '\n';
+				break;
+			case SDL_SCANCODE_BACKSPACE:
+				window.text_input[window.text_input_len ++] = '\b';
+				break;
+			default: break;
+			/* case SDL_SCANCODE_ESCAPE: */
+			/* case SDL_SCANCODE_TAB: */
+			}
+			break;
+		case SDL_MOUSEBUTTONDOWN:
+			if (e.button.button == SDL_BUTTON_LEFT)
+				window.mouse_pressed[MOUSEBL] = 1;
+			if (e.button.button == SDL_BUTTON_RIGHT)
+				window.mouse_pressed[MOUSEBR] = 1;
+			if (e.button.button == SDL_BUTTON_MIDDLE)
+				window.mouse_pressed[MOUSEBM] = 1;
+			break;
+		case SDL_MOUSEMOTION:
+			window.motion_x += e.motion.xrel;
+			window.motion_y += e.motion.yrel;
+			break;
+		case SDL_MOUSEWHEEL:
+			window.scroll += e.wheel.y;
+			break;
+		case SDL_TEXTINPUT:
+			strncpy(window.text_input + window.text_input_len,
+			        e.text.text,
+			        MAX_TEXT_INPUT_LEN - window.text_input_len);
+			window.text_input_len = strlen(window.text_input);
+			break;
 		case SDL_QUIT:
 			quit = 1;
 			break;
 		case SDL_WINDOWEVENT:
 			if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
 				glViewport(0, 0, e.window.data1, e.window.data2);
-			break;
-		case SDL_MOUSEMOTION:
-			window.motion_x += e.motion.xrel;
-			window.motion_y += e.motion.yrel;
 			break;
 		}
 	}
@@ -209,7 +247,12 @@ window_startframe(void)
 	 * TODO: Returns {0,0}, until a mouse event occurs.
 	 * We should throw away these values until that happens.
 	 */
-	SDL_GetMouseState(&window.mouse_x, &window.mouse_y);
+	Uint32 ms = SDL_GetMouseState(&window.mouse_x, &window.mouse_y);
+	window.keymod = SDL_GetModState();
+
+	window.mouse_held[MOUSEBL] = (ms & SDL_BUTTON(SDL_BUTTON_LEFT));
+	window.mouse_held[MOUSEBR] = (ms & SDL_BUTTON(SDL_BUTTON_RIGHT));
+	window.mouse_held[MOUSEBM] = (ms & SDL_BUTTON(SDL_BUTTON_MIDDLE));
 
 	return quit;
 }

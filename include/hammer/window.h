@@ -11,6 +11,15 @@ struct frame {
 	size_t id;
 };
 
+enum {
+	MOUSEBL,
+	MOUSEBR,
+	MOUSEBM,
+	MOUSEB_COUNT,
+};
+
+#define MAX_TEXT_INPUT_LEN 64
+
 struct window {
 	SDL_Window   *handle;
 	const Uint8  *keydown;
@@ -18,9 +27,15 @@ struct window {
 	SDL_GLContext glcontext;
 	struct frame  frames[FRAMES_IN_FLIGHT];
 	size_t        current_frame;
+	size_t        text_input_len;
+	SDL_Keymod    keymod;
 	int           motion_x, motion_y;
 	int           mouse_x, mouse_y;
+	int           scroll;
 	int           width, height;
+	int           mouse_held[MOUSEB_COUNT];
+	int           mouse_pressed[MOUSEB_COUNT];
+	char          text_input[MAX_TEXT_INPUT_LEN];
 };
 
 extern struct window window;
