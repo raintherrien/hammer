@@ -1,0 +1,47 @@
+#!/bin/bash
+fontdir="/fonts/"
+
+if [[ "$1" = "--help" || "$1" = "-h" || ! -d "${1}${fontdir}" ]] ; then
+	echo "Could not find fonts"
+	echo "usage: generate-atlas {resources-dir-path}"
+	exit 1
+fi
+fontdir="${1}${fontdir}"
+
+for fontfile in ${fontdir}*.ttf ; do
+	font=$(basename ${fontfile} .ttf)
+	echo "Generating texture atlas for ${font}"
+	mkdir -p ${fontdir}${font}
+	chars=`cat ${fontdir}atlas.txt`
+	for (( i=0; i<${#chars}; i++ )) ; do
+		label=${chars:$i:1}
+		label=$(sed 's/\\/\\\\/' <<< $label)
+		printf "%s" "${label}"
+		img=${fontdir}${font}/$(printf "%d" "'${chars:$i:1}").png
+
+		# Skip existing
+		if [ -f ${img} ] ; then
+			continue
+		fi
+
+		# Generate a PNG for each atlas character
+		convert -background black \
+		        -fill white \
+		        -pointsize 128 \
+		        -font "${fontfile}" \
+		        label:"${label}" \
+		        ${img}
+
+		# Convert to SDF
+		convert ${img} \
+		        -filter Jinc \
+		        -threshold 30% \
+		        \( +clone -negate -morphology Distance Euclidean -level 50%,-50% \) \
+		        -morphology Distance Euclidean \
+		        -compose Plus \
+		        -composite \
+		        -level 45%,55% \
+		        ${img}
+	done
+	printf "\n"
+done

@@ -10,7 +10,9 @@ struct main_menu_pkg {
 	dltask        task;
 	struct rtargs args;
 	size_t        version_str_len;
+	size_t        bork_str_len;
 	char          version_str[VERSION_STR_MAX_LEN];
+	char          bork_str[VERSION_STR_MAX_LEN];
 };
 void main_menu_entry(DL_TASK_ARGS);
 

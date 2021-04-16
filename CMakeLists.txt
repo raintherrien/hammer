@@ -77,11 +77,15 @@ target_link_libraries(hammer m
                              SDL2
                              SDL2_image)
 
-add_custom_target(hammer_resources
+add_custom_target(hammer_copy_resources
                    COMMAND ${CMAKE_COMMAND} -E copy_directory
                            ${PROJECT_SOURCE_DIR}/resources/
                            ${CMAKE_CURRENT_BINARY_DIR}/resources/)
-add_dependencies(hammer hammer_resources)
+add_custom_target(hammer_build_resources
+                   COMMAND ${PROJECT_SOURCE_DIR}/scripts/generate-atlas
+                           ${CMAKE_CURRENT_BINARY_DIR}/resources/)
+add_dependencies(hammer_build_resources hammer_copy_resources)
+add_dependencies(hammer hammer_build_resources)
 
 option(HAMMER_BUILD_SAN "Build with sanitizers" OFF)
 if(HAMMER_BUILD_SAN)

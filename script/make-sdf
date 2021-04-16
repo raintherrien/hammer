@@ -1,5 +1,0 @@
-#!/bin/sh
-# Uses the NPM utility https://github.com/mattdesl/image-sdf
-image-sdf jetbrains_mono_regular.png --spread 8 > jetbrains_mono_regular_sdf.png
-image-sdf jetbrains_mono_bold.png    --spread 8 > jetbrains_mono_bold_sdf.png
-image-sdf jetbrains_mono_italic.png  --spread 8 > jetbrains_mono_italic_sdf.png

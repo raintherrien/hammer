@@ -34,7 +34,9 @@ compile_shader_file(const char *filename, GLenum shader_type)
 }
 
 GLuint
-compile_shader_program(const char *vs_filename, const char *fs_filename)
+compile_shader_program(const char *vs_filename,
+                       const char *gs_filename,
+                       const char *fs_filename)
 {
 	GLuint program = glCreateProgram();
 
@@ -43,6 +45,12 @@ compile_shader_program(const char *vs_filename, const char *fs_filename)
 		if (vs == 0)
 			goto shader_error;
 		glAttachShader(program, vs);
+	}
+	if (gs_filename) {
+		GLuint gs = compile_shader_file(gs_filename, GL_GEOMETRY_SHADER);
+		if (gs == 0)
+			goto shader_error;
+		glAttachShader(program, gs);
 	}
 	if (fs_filename) {
 		GLuint fs = compile_shader_file(fs_filename, GL_FRAGMENT_SHADER);

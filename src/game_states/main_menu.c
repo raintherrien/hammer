@@ -21,6 +21,7 @@ main_menu_entry(DL_TASK_ARGS)
 	         HAMMER_VERSION_MAJOR, HAMMER_VERSION_MINOR, HAMMER_VERSION_PATCH,
 	         build_date_code());
 	pkg->version_str_len = strlen(pkg->version_str);
+	memset(pkg->bork_str, 0, sizeof(*pkg->bork_str)*VERSION_STR_MAX_LEN);
 
 	/* Kick off loop */
 	dlcontinuation(&pkg->task, main_menu_loop);
@@ -56,14 +57,21 @@ main_menu_gl_frame(void *pkg_)
 	if (window_startframe())
 		return (void *)1;
 
+	char *c = window.text_input;
+	if (*c && pkg->bork_str_len < VERSION_STR_MAX_LEN-1) {
+		if (*c != '\b')
+			pkg->bork_str[pkg->bork_str_len ++] = *c;
+		else if (pkg->bork_str_len > 0)
+			pkg->bork_str[-- pkg->bork_str_len] = '\0';
+		++ c;
+	}
+
 	float font_size = 32;
-	gui_text(pkg->version_str, 0, 0, font_size);
-	gui_text("What an absolute shit show", 0, font_size, 16);
-	gui_text("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 0, font_size+16, 16);
+	gui_text(pkg->version_str, 0, 0, font_size, 1,1,1);
+	gui_text("What an absolute shit show", 0, font_size, 16, 1,0,0);
+	gui_text(pkg->bork_str, 0, font_size+16, 24, 0,1,0);
 
 	gui_render();
-
-	fprintf(stderr, "%s", window.text_input);
 
 	return NULL;
 }
