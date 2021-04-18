@@ -23,25 +23,26 @@ struct font_atlas {
 };
 
 struct {
-	struct font_vertex *text_buffer[FRAMES_IN_FLIGHT];
-	size_t text_buffer_count[FRAMES_IN_FLIGHT];
+	struct text_vertex *text_buffer[FRAMES_IN_FLIGHT];
+	size_t              text_buffer_count[FRAMES_IN_FLIGHT];
 
 	GLuint text_shader;
 	GLuint text_vao;
 	GLuint text_vbo[FRAMES_IN_FLIGHT];
 
-	struct font_atlas regular_atlas;
+	GLuint uniform_font_atlas_height_location;
+	GLuint uniform_ortho_location;
 
-	mat4 ortho_matrix;
+	struct font_atlas regular_atlas;
 } gui;
 
-struct font_vertex {
-	float xyz[3];
-	float rgb[3];
-	float s;
-	float w;
-	float h;
-	unsigned character;
+struct text_vertex { // 23B
+	GLfloat position[3];
+	GLfloat dimensions[2];
+	GLuint  color;
+	GLubyte weight;
+	GLubyte style;
+	GLubyte character;
 };
 
 void
@@ -52,6 +53,8 @@ gui_create(void)
 	                                         "resources/shaders/gui_text.fs");
 	if (gui.text_shader == 0)
 		xpanic("Error creating GUI text shader");
+	gui.uniform_font_atlas_height_location = glGetUniformLocation(gui.text_shader, "font_atlas_height");
+	gui.uniform_ortho_location = glGetUniformLocation(gui.text_shader, "ortho");
 
 	gui.regular_atlas = load_font_atlas("JetBrainsMono-Regular");
 	if (gui.regular_atlas.texture_array == 0)
@@ -73,20 +76,16 @@ gui_create(void)
 	                   GL_MAP_COHERENT_BIT;
 	for (size_t i = 0; i < FRAMES_IN_FLIGHT; ++ i) {
 		glBindBuffer(GL_ARRAY_BUFFER, gui.text_vbo[i]);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(struct font_vertex), (void *)offsetof(struct font_vertex,xyz));
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(struct font_vertex), (void *)offsetof(struct font_vertex,rgb));
-		glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(struct font_vertex), (void *)offsetof(struct font_vertex,s));
-		glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(struct font_vertex), (void *)offsetof(struct font_vertex,w));
-		glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(struct font_vertex), (void *)offsetof(struct font_vertex,h));
-		glVertexAttribIPointer(5, 1, GL_UNSIGNED_INT,   sizeof(struct font_vertex), (void *)offsetof(struct font_vertex,character));
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(struct text_vertex), (void *)offsetof(struct text_vertex,position));
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(struct text_vertex), (void *)offsetof(struct text_vertex,dimensions));
+		glVertexAttribIPointer(5, 1, GL_UNSIGNED_INT, sizeof(struct text_vertex), (void *)offsetof(struct text_vertex,color));
+		glVertexAttribIPointer(2, 1, GL_UNSIGNED_BYTE, sizeof(struct text_vertex), (void *)offsetof(struct text_vertex,weight));
+		glVertexAttribIPointer(3, 1, GL_UNSIGNED_BYTE, sizeof(struct text_vertex), (void *)offsetof(struct text_vertex,style));
+		glVertexAttribIPointer(4, 1, GL_UNSIGNED_BYTE, sizeof(struct text_vertex), (void *)offsetof(struct text_vertex,character));
 		glBufferStorage(GL_ARRAY_BUFFER, TEXT_VBO_SIZE, 0, flags);
 		gui.text_buffer[i] = glMapBufferRange(GL_ARRAY_BUFFER, 0,
 		                                      TEXT_VBO_SIZE, flags);
 	}
-
-	/* XXX Never resized */
-	/* 0,0 top left */
-	glm_ortho(0, window.width, window.height, 0, 0, 1, gui.ortho_matrix);
 }
 
 void
@@ -106,11 +105,17 @@ gui_render(void)
 {
 	size_t f = window.current_frame % FRAMES_IN_FLIGHT;
 
+	/* 0,0 top left */
+	mat4 ortho_matrix;
+	glm_ortho(0, window.width, window.height, 0, -1000, 1, ortho_matrix);
+
 	if (gui.text_buffer_count[f]) {
 		glUseProgram(gui.text_shader);
 		glBindVertexArray(gui.text_vao);
-		glUniformMatrix4fv(glGetUniformLocation(gui.text_shader, "ortho"),
-		                   1, GL_FALSE, (float *)gui.ortho_matrix);
+		glUniform1f(gui.uniform_font_atlas_height_location,
+		            gui.regular_atlas.texture_height);
+		glUniformMatrix4fv(gui.uniform_ortho_location,
+		                   1, GL_FALSE, (float *)ortho_matrix);
 		glBindBuffer(GL_ARRAY_BUFFER, gui.text_vbo[f]);
 		glDrawArrays(GL_POINTS, 0, gui.text_buffer_count[f]);
 		gui.text_buffer_count[f] = 0;
@@ -118,23 +123,40 @@ gui_render(void)
 }
 
 void
-gui_text(const char *text, float left, float top, float font_size, float r, float g, float b)
+gui_text_impl(const char *txt, float left, float top, struct font_opts opts)
 {
+	const size_t VS = sizeof(struct text_vertex);
 	size_t f = (window.current_frame + 1) % FRAMES_IN_FLIGHT;
-	size_t l = strlen(text);
-	float ww = font_size * gui.regular_atlas.character_ratio;
-	float s = font_size / gui.regular_atlas.texture_height;
-	for (size_t i = 0; i < l && gui.text_buffer_count[f] < MAX_TEXT_INPUT_LEN; ++ i) {
-		int c = (int)text[i] - '!';
+	size_t l = strlen(txt);
+	float char_width = opts.size * gui.regular_atlas.character_ratio;
+	for (size_t i = 0; i < l; ++ i) {
+		if (gui.text_buffer_count[f] * VS >= TEXT_VBO_SIZE)
+			continue;
+		int c = (int)txt[i] - '!';
 		if (c < 0 || c >= FONT_ATLAS_LAYERS)
 			continue;
-		float x0 = left + ww * i;
-		float y0 = top;
-		struct font_vertex v = {{x0, y0, 0}, {r,g,b}, s, ww, font_size, c };
-		const size_t VS = sizeof(struct font_vertex);
+		float x = left + char_width * i;
+		float y = top;
+		struct text_vertex v = {
+			.position = {x, y, opts.z},
+			.dimensions = {char_width, opts.size},
+			.color  = opts.color,
+			.weight = opts.weight,
+			.style  = opts.style,
+			.character = c
+		};
 		memcpy((char *)gui.text_buffer[f] + gui.text_buffer_count[f] * VS, &v, sizeof(v));
 		++ gui.text_buffer_count[f];
 	}
+}
+
+void
+gui_text_center_impl(const char *txt, float top, struct font_opts opts)
+{
+	size_t l = strlen(txt);
+	float ww = opts.size * gui.regular_atlas.character_ratio;
+	float left = (window.width - l * ww) / 2;
+	gui_text_impl(txt, left, top, opts);
 }
 
 static struct font_atlas

@@ -27,7 +27,7 @@ find_package(Threads REQUIRED)
 # Add warnings
 # Note: add_compile_options propegates these options to e.g. examples.
 set(HAMMER_MSVC_WARNFLAGS /W4 /WX)
-set(HAMMER_OTHR_WARNFLAGS -Wall -Wextra)
+set(HAMMER_OTHR_WARNFLAGS -Wall -Wextra -Werror -Wno-override-init)
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	set(HAMMER_OTHR_WARNFLAGS "${set(HAMMER_OTHR_WARNFLAGS} -Wno-date-time -Wno-c++98-compat -Wno-implicit-fallthrough")
 endif()

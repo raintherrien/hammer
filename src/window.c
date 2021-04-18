@@ -237,8 +237,11 @@ window_startframe(void)
 			quit = 1;
 			break;
 		case SDL_WINDOWEVENT:
-			if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-				glViewport(0, 0, e.window.data1, e.window.data2);
+			if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+				window.width  = e.window.data1;
+				window.height = e.window.data2;
+				glViewport(0, 0, window.width, window.height);
+			}
 			break;
 		}
 	}
