@@ -3,6 +3,14 @@
 #include "hammer/vector.h"
 #include <errno.h>
 
+/* Prototypes for GUI subsystems window manages */
+void gui_rect_init(void);
+void gui_rect_deinit(void);
+void gui_rect_render(void);
+void gui_text_init(void);
+void gui_text_deinit(void);
+void gui_text_render(void);
+
 struct window window;
 
 #ifdef HAMMER_DEBUG_OPENGL
@@ -144,11 +152,18 @@ window_create(void)
 	glViewport(0, 0, window.width, window.height);
 
 	window.keydown = SDL_GetKeyboardState(NULL);
+
+	gui_rect_init();
+	gui_text_init();
+
+	window.should_close = 0;
 }
 
 void
 window_destroy(void)
 {
+	gui_rect_deinit();
+	gui_text_deinit();
 	vector_free(&window.frame_events);
 	SDL_GL_DeleteContext(window.glcontext);
 	SDL_DestroyWindow(window.handle);
@@ -158,12 +173,7 @@ window_destroy(void)
 int
 window_startframe(void)
 {
-	size_t old_frame = window.current_frame % FRAMES_IN_FLIGHT;
 	size_t new_frame = (++ window.current_frame) % FRAMES_IN_FLIGHT;
-
-	/* Finish last frame, create fence */
-	SDL_GL_SwapWindow(window.handle);
-	window.frames[old_frame].fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 
 	/* Wait for next frame in ring buffer to complete */
 	GLsync recycling_fence = window.frames[new_frame].fence;
@@ -177,18 +187,20 @@ window_startframe(void)
 				xpanic("Error waiting on frame fence");
 		}
 		glDeleteSync(recycling_fence);
+		window.frames[new_frame].fence = 0;
 	}
 
 	/* Begin this frame */
 	window.frames[new_frame].id = new_frame;
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	int quit = 0;
-
 	window.motion_x = 0;
 	window.motion_y = 0;
 	window.scroll = 0;
 	window.text_input_len = 0;
+	window.mouse_pressed[MOUSEBL] = 0;
+	window.mouse_pressed[MOUSEBR] = 0;
+	window.mouse_pressed[MOUSEBM] = 0;
 	memset(window.text_input, 0, MAX_TEXT_INPUT_LEN * sizeof(*window.text_input));
 
 	vector_clear(&window.frame_events);
@@ -207,7 +219,8 @@ window_startframe(void)
 			case SDL_SCANCODE_BACKSPACE:
 				window.text_input[window.text_input_len ++] = '\b';
 				break;
-			default: break;
+			default:
+				break;
 			/* case SDL_SCANCODE_ESCAPE: */
 			/* case SDL_SCANCODE_TAB: */
 			}
@@ -234,7 +247,7 @@ window_startframe(void)
 			window.text_input_len = strlen(window.text_input);
 			break;
 		case SDL_QUIT:
-			quit = 1;
+			window.should_close = 1;
 			break;
 		case SDL_WINDOWEVENT:
 			if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
@@ -253,9 +266,22 @@ window_startframe(void)
 	Uint32 ms = SDL_GetMouseState(&window.mouse_x, &window.mouse_y);
 	window.keymod = SDL_GetModState();
 
-	window.mouse_held[MOUSEBL] = (ms & SDL_BUTTON(SDL_BUTTON_LEFT));
-	window.mouse_held[MOUSEBR] = (ms & SDL_BUTTON(SDL_BUTTON_RIGHT));
-	window.mouse_held[MOUSEBM] = (ms & SDL_BUTTON(SDL_BUTTON_MIDDLE));
+	window.mouse_held[MOUSEBL] = ms & SDL_BUTTON(SDL_BUTTON_LEFT);
+	window.mouse_held[MOUSEBR] = ms & SDL_BUTTON(SDL_BUTTON_RIGHT);
+	window.mouse_held[MOUSEBM] = ms & SDL_BUTTON(SDL_BUTTON_MIDDLE);
 
-	return quit;
+	return window.should_close;
+}
+
+void
+window_submitframe(void)
+{
+	gui_rect_render();
+	gui_text_render();
+
+	size_t frameid = window.current_frame % FRAMES_IN_FLIGHT;
+
+	/* Create fence to complete when this frame is rendered */
+	SDL_GL_SwapWindow(window.handle);
+	window.frames[frameid].fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 }

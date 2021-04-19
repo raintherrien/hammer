@@ -1,6 +1,5 @@
 #include "hammer/error.h"
 #include "hammer/glthread.h"
-#include "hammer/gui.h"
 #include "hammer/window.h"
 #include <errno.h>
 #include <stdatomic.h>
@@ -22,7 +21,6 @@ glthread_entry(void *_)
 	(void) _;
 
 	window_create();
-	gui_create();
 
 	pthread_mutex_lock(&glthread.mtx);
 	while (!glthread.terminate) {
@@ -38,7 +36,6 @@ glthread_entry(void *_)
 	}
 	pthread_mutex_unlock(&glthread.mtx);
 
-	gui_destroy();
 	window_destroy();
 
 	return NULL;

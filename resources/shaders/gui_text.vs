@@ -14,7 +14,7 @@ layout(location=3) out uint  gs_character;
 layout(location=4) out uint  gs_color;
 layout(location=5) out float gs_font_scale;
 
-uniform float font_atlas_height;
+uniform float font_height;
 
 void main()
 {
@@ -24,5 +24,5 @@ void main()
 	gs_style = in_style;
 	gs_character = in_character;
 	gs_color = in_color;
-	gs_font_scale = in_dimensions.y / font_atlas_height;
+	gs_font_scale = in_dimensions.y / font_height;
 }

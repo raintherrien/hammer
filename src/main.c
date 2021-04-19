@@ -10,11 +10,9 @@
 int
 main(int argc, char **argv)
 {
-	struct main_menu_pkg main_menu;
-	main_menu.task = DL_TASK_INIT(main_menu_entry);
-
 	/* Parse runtime args */
-	switch (parse_args(&main_menu.args, argc, argv)) {
+	struct rtargs rtargs;
+	switch (parse_args(&rtargs, argc, argv)) {
 	case 0:             break;
 	case HAMMER_E_EXIT: return EXIT_SUCCESS;
 	default:
@@ -23,6 +21,7 @@ main(int argc, char **argv)
 
 	glthread_create();
 
+	struct main_menu_pkg main_menu = main_menu_pkg_init(rtargs);
 	if (dlmain(&main_menu.task, NULL, NULL))
 		xpanic("Error creating deadlock scheduler");
 

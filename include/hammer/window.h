@@ -35,6 +35,7 @@ struct window {
 	int           width, height;
 	int           mouse_held[MOUSEB_COUNT];
 	int           mouse_pressed[MOUSEB_COUNT];
+	int           should_close;
 	char          text_input[MAX_TEXT_INPUT_LEN];
 };
 
@@ -43,6 +44,7 @@ extern struct window window;
 void window_create(void);
 void window_destroy(void);
 int  window_startframe(void);
+void window_submitframe(void);
 
 inline static void
 window_lock_mouse(void)

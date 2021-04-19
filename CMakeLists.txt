@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(hammer VERSION 0.1 LANGUAGES C)
+project(hammer VERSION 0.1.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD          11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -27,18 +27,25 @@ find_package(Threads REQUIRED)
 # Add warnings
 # Note: add_compile_options propegates these options to e.g. examples.
 set(HAMMER_MSVC_WARNFLAGS /W4 /WX)
-set(HAMMER_OTHR_WARNFLAGS -Wall -Wextra -Werror -Wno-override-init)
+set(HAMMER_OTHR_WARNFLAGS -Wall -Wextra -Werror -Wno-override-init -Wno-missing-field-initializers)
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	set(HAMMER_OTHR_WARNFLAGS "${set(HAMMER_OTHR_WARNFLAGS} -Wno-date-time -Wno-c++98-compat -Wno-implicit-fallthrough")
 endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
-set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
+set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/game_states/main_menu.c
+                   ${PROJECT_SOURCE_DIR}/src/game_states/worldgen_menu.c
+                   ${PROJECT_SOURCE_DIR}/src/gui/interaction.c
+                   ${PROJECT_SOURCE_DIR}/src/gui/rect.c
+                   ${PROJECT_SOURCE_DIR}/src/gui/text.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/large_scale_world_gen.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/worldgen.c
+                   ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
                    ${PROJECT_SOURCE_DIR}/src/file.c
-                   ${PROJECT_SOURCE_DIR}/src/game_states/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/glsl.c
-                   ${PROJECT_SOURCE_DIR}/src/gui.c
                    ${PROJECT_SOURCE_DIR}/src/image.c
                    ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/salloc.c
@@ -49,11 +56,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
-                   ${PROJECT_SOURCE_DIR}/src/window.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/large_scale_world_gen.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/worldgen.c)
+                   ${PROJECT_SOURCE_DIR}/src/window.c)
 
 if(WIN32)
 	# Disable warnings about fopen in VS2019
@@ -76,6 +79,10 @@ target_link_libraries(hammer m
                              GLEW
                              SDL2
                              SDL2_image)
+target_compile_definitions(hammer
+                           PRIVATE "HAMMER_VERSION_MAJOR=${hammer_VERSION_MAJOR}"
+                           PRIVATE "HAMMER_VERSION_MINOR=${hammer_VERSION_MINOR}"
+                           PRIVATE "HAMMER_VERSION_PATCH=${hammer_VERSION_PATCH}")
 
 add_custom_target(hammer_copy_resources
                    COMMAND ${CMAKE_COMMAND} -E copy_directory
