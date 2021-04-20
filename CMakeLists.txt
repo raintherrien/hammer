@@ -33,8 +33,9 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
-set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/game_states/main_menu.c
-                   ${PROJECT_SOURCE_DIR}/src/game_states/worldgen_menu.c
+set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/game_states/basic_worldgen.c
+                   ${PROJECT_SOURCE_DIR}/src/game_states/main_menu.c
+                   ${PROJECT_SOURCE_DIR}/src/game_states/worldgen_config_menu.c
                    ${PROJECT_SOURCE_DIR}/src/gui/interaction.c
                    ${PROJECT_SOURCE_DIR}/src/gui/rect.c
                    ${PROJECT_SOURCE_DIR}/src/gui/text.c

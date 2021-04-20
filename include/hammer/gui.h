@@ -52,7 +52,6 @@ struct text_opts {
                            .yoffset = 0,        \
                            .zoffset = 0
 
-
 struct button_opts {
 	uint32_t foreground;
 	uint32_t background;

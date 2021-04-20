@@ -12,7 +12,6 @@ struct main_menu_pkg {
 	struct rtargs args;
 
 	/* private */
-	void *child_state;
 	enum {
 		MAIN_MENU_LOOP,
 		MAIN_MENU_EXIT,

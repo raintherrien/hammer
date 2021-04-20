@@ -1,5 +1,5 @@
 #include "hammer/game_states/main_menu.h"
-#include "hammer/game_states/worldgen_menu.h"
+#include "hammer/game_states/worldgen_config_menu.h"
 #include "hammer/glthread.h"
 #include "hammer/mem.h"
 #include "hammer/version.h"
@@ -25,10 +25,6 @@ main_menu_entry(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY(struct main_menu_pkg, pkg, task);
 
-	/* Free any child task, incase we're re-entering the main menu */
-	free(pkg->child_state);
-	pkg->child_state = NULL;
-
 	/* Perform set up */
 	glthread_execute(main_menu_gl_setup, NULL);
 	snprintf(pkg->version_str, VERSION_STR_MAX_LEN,
@@ -51,13 +47,13 @@ main_menu_loop(DL_TASK_ARGS)
 	if (pkg->frame_result == MAIN_MENU_EXIT) {
 		dlterminate();
 	} else if (pkg->frame_result == MAIN_MENU_GENERATE_NEW_WORLD) {
-		/* Create a worldgen task */
-		struct worldgen_menu_pkg *wgpkg = xcalloc(1, sizeof(*wgpkg));
-		*wgpkg = worldgen_menu_pkg_init(pkg->args);
-		pkg->child_state = wgpkg;
+		/* Create a worldgen config task */
+		struct worldgen_config_menu_pkg *wgpkg =
+			xcalloc(1, sizeof(*wgpkg));
+		*wgpkg = worldgen_config_menu_init(pkg->args);
 		/*
-		 * Execute the worldgen task, with this main menu linked to
-		 * execute when it completes.
+		 * Execute the worldgen config task, with this main menu
+		 * linked to execute when it completes.
 		 */
 		dlcontinuation(&pkg->task, main_menu_entry);
 		dlwait(&pkg->task, 1);
