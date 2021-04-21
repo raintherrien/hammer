@@ -4,6 +4,9 @@
 #include <errno.h>
 
 /* Prototypes for GUI subsystems window manages */
+void gui_img_init(void);
+void gui_img_deinit(void);
+void gui_img_render(void);
 void gui_rect_init(void);
 void gui_rect_deinit(void);
 void gui_rect_render(void);
@@ -153,6 +156,7 @@ window_create(void)
 
 	window.keydown = SDL_GetKeyboardState(NULL);
 
+	gui_img_init();
 	gui_rect_init();
 	gui_text_init();
 
@@ -162,6 +166,7 @@ window_create(void)
 void
 window_destroy(void)
 {
+	gui_img_deinit();
 	gui_rect_deinit();
 	gui_text_deinit();
 	vector_free(&window.frame_events);

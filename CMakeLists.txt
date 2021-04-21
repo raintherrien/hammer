@@ -27,22 +27,23 @@ find_package(Threads REQUIRED)
 # Add warnings
 # Note: add_compile_options propegates these options to e.g. examples.
 set(HAMMER_MSVC_WARNFLAGS /W4 /WX)
-set(HAMMER_OTHR_WARNFLAGS -Wall -Wextra -Werror -Wno-override-init -Wno-missing-field-initializers)
+set(HAMMER_OTHR_WARNFLAGS -Wall -Wextra -Wno-override-init -Wno-missing-field-initializers)
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	set(HAMMER_OTHR_WARNFLAGS "${set(HAMMER_OTHR_WARNFLAGS} -Wno-date-time -Wno-c++98-compat -Wno-implicit-fallthrough")
 endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
-set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/game_states/basic_worldgen.c
-                   ${PROJECT_SOURCE_DIR}/src/game_states/main_menu.c
-                   ${PROJECT_SOURCE_DIR}/src/game_states/worldgen_config_menu.c
+set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/manager.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/visualize_tectonic.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/world_config.c
+                   ${PROJECT_SOURCE_DIR}/src/gui/img.c
                    ${PROJECT_SOURCE_DIR}/src/gui/interaction.c
                    ${PROJECT_SOURCE_DIR}/src/gui/rect.c
                    ${PROJECT_SOURCE_DIR}/src/gui/text.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/large_scale_world_gen.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/worldgen.c
                    ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
                    ${PROJECT_SOURCE_DIR}/src/file.c
@@ -114,9 +115,4 @@ endif()
 option(HAMMER_DEBUG_OPENGL "Write OpenGL debug information to stderr" OFF)
 if(HAMMER_DEBUG_OPENGL)
 	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_OPENGL)
-endif()
-
-option(HAMMER_DEBUG_TECTONIC "Output images of tectonic process" OFF)
-if(HAMMER_DEBUG_TECTONIC)
-	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_TECTONIC)
 endif()

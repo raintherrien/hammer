@@ -3,20 +3,12 @@
 #include "hammer/opensimplex.h"
 #include "hammer/ring.h"
 #include "hammer/vector.h"
-#include "hammer/well.h"
 #include "hammer/worldgen/tectonic.h"
 #include <assert.h>
 #include <float.h>
 #include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef HAMMER_DEBUG_TECTONIC
-#include "hammer/image.h"
-#include <stdio.h>
-#endif
 
 #define MIN_XFER 0.0000125f
 
@@ -83,86 +75,10 @@
  *   and memoization and I'm happy enough with it.
  */
 
-/* Lithosphere dimensions */
-#define LITHOSPHERE_LEN 1024
-#define LITHOSPHERE_AREA (LITHOSPHERE_LEN * LITHOSPHERE_LEN)
-
-/*
- * Limit area of segments to uint32_t and count to something reasonable so
- * that we can allocate a segment collision set.
- */
-#define MAX_SEGMENT_AREA  (((size_t)1<<32)-1)
-#define MAX_SEGMENT_COUNT 128
-#define COLLISION_SET_BYTES (MAX_SEGMENT_COUNT * MAX_SEGMENT_COUNT / 8)
-_Static_assert(MAX_SEGMENT_COUNT * MAX_SEGMENT_COUNT % 8 == 0);
-
-#define NO_PLATE   ((uint32_t)-1)
-#define NO_SEGMENT ((uint16_t)-1)
-
-/*
- * An intra-plate collision identifies the lithosphere space coordinates of
- * the collision and the plate colliding. The plate colliding always collides
- * with whatever plate owns this cell.
- */
-struct collision {
-	uint32_t plate_index;
-	uint32_t x, y;
-};
-
-/*
- * Segments are groups of continental cells. These can be large continents or
- * small island chains. The idea behind segmenting a plate is that when
- * continental land forms collide they merge rather than deform.
- *
- * The bounding box of each segment is stored in plate space to accelerate
- * blitting and transfers. Segments can be very small.
- */
-struct segment {
-	uint32_t area;
-	uint32_t left, top;
-	uint32_t w, h;
-	uint16_t id;
-};
-
-struct plate {
-	struct segment *segments;
-	/*
-	 * The original paper must have updated left/top whenever a plate
-	 * shifted. This works when you have a 2D map of mass only as large as
-	 * your plate (width x height), but since I'm trying to avoid resizing
-	 * and shuffling that plate data I keep track of a translation vector.
-	 * When going from "plate space" to "lithosphere space" you *add* the
-	 * translation vector, and vice versa when going from "lithosphere
-	 * space" to "plate space" you subtract the translation vector.
-	 */
-	float tvx, tvy;
-	float tx, ty;
-	float mass[LITHOSPHERE_AREA];
-	/*
-	 * Do NOT attempt to define this using four points. Trust me. It's a
-	 * total shitshow when you're dealing with iterating over wrapping
-	 * coordinates. It was my go-to when I read the paper but now I
-	 * understand why the author chose to represent coordinates this way!
-	 */
-	uint32_t left, top;
-	uint32_t w, h;
-	uint16_t in_segment[LITHOSPHERE_AREA];
-};
-
-struct lithosphere {
-	struct collision *collisions;
-	struct plate *plates;
-	float    mass[LITHOSPHERE_AREA];
-	uint32_t generation;
-	uint32_t owner[LITHOSPHERE_AREA];
-	uint32_t prev_owner[LITHOSPHERE_AREA];
-	uint8_t  collision_set[COLLISION_SET_BYTES];
-};
-
 /*
  * Populates a divergent cell with no owner with magma and assignes a plate.
  */
-static void divergent_cell(struct lithosphere *, uint32_t, WELL512,
+static void divergent_cell(struct lithosphere *, uint32_t,
                            const struct tectonic_opts *);
 
 /*
@@ -170,30 +86,18 @@ static void divergent_cell(struct lithosphere *, uint32_t, WELL512,
  * subducting/colliding plates are discarded, such that more calls to this
  * function results in more mass loss throughout the map.
  */
-static void lithosphere_create_plates(struct lithosphere *, WELL512,
+static void lithosphere_create_plates(struct lithosphere *,
                                       const struct tectonic_opts *);
-
-/*
- * Frees memory associated with the lithosphere.
- */
-static void lithosphere_destroy(struct lithosphere *l);
 
 /*
  * Initializes the mass map with coherent wrapping noise.
  */
-static void lithosphere_init_mass(struct lithosphere *, WELL512);
-
-/*
- * Performs very basic domain warping upon lithosphere's mass map and stores
- * in uplift.
- */
-static void lithosphere_warp(struct lithosphere *, WELL512,
-                             float *uplift, unsigned long uplift_size);
+static void lithosphere_init_mass(struct lithosphere *);
 
 /*
  * Performs one iteration of the tectonic uplift algorithm.
  */
-static void lithosphere_update(struct lithosphere *, WELL512,
+static void lithosphere_update_impl(struct lithosphere *,
                                const struct tectonic_opts *);
 
 /*
@@ -279,45 +183,77 @@ plate_to_lithosphere(struct plate *p, uint32_t px, uint32_t py, uint32_t lxy[2])
 	lxy[1] = wrap(lroundf(py - p->ty));
 }
 
-/*
- * When debugging, write each iteration out as a heightmap PNG.
- */
-#ifdef HAMMER_DEBUG_TECTONIC
-static void debug_print(struct lithosphere *, int draw_borders);
-#endif
-
-float *
-tectonic_uplift(const struct tectonic_opts *opts, unsigned long size)
+void
+lithosphere_create(struct lithosphere *l, const struct tectonic_opts *opts)
 {
-	float *uplift = xmalloc(size * size * sizeof(*uplift));
-	WELL512 rng;
-	WELL512_seed(rng, opts->seed);
-	struct lithosphere *l = xcalloc(1, sizeof(*l));
-	lithosphere_init_mass(l, rng);
-	for (size_t s = 0; s < opts->generations; ++ s) {
-		lithosphere_create_plates(l, rng, opts);
-		for (size_t i = 0; i < opts->generation_steps; ++ i) {
-			lithosphere_update(l, rng, opts);
-#ifdef HAMMER_DEBUG_TECTONIC
-			debug_print(l, 1);
-#endif
-			printf("Tectonic uplift generation %d/%d\n",
-			       l->generation,
-			       opts->generations * opts->generation_steps);
-		}
+	memset(l, 0, sizeof(*l));
+	WELL512_seed(l->rng, opts->seed);
+	lithosphere_init_mass(l);
+}
+
+void
+lithosphere_destroy(struct lithosphere *l)
+{
+	vector_free(&l->collisions);
+	size_t plate_count = vector_size(l->plates);
+	for (uint32_t p = 0; p < plate_count; ++ p)
+		plate_destroy(l->plates + p);
+	vector_free(&l->plates);
+}
+
+void
+lithosphere_update(struct lithosphere *l, const struct tectonic_opts *opts)
+{
+	if (l->generation % opts->generation_steps == 0) {
 		size_t plate_count = vector_size(l->plates);
 		for (uint32_t p = 0; p < plate_count; ++ p)
 			plate_destroy(l->plates + p);
 		vector_clear(&l->plates);
+		lithosphere_create_plates(l, opts);
 	}
-	lithosphere_warp(l, rng, uplift, size);
-	lithosphere_destroy(l);
-	free(l);
-	return uplift;
+	lithosphere_update_impl(l, opts);
+}
+
+void
+lithosphere_blit(struct lithosphere *l, float *uplift, unsigned long size)
+{
+	struct opensimplex *n[6] = {
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng))
+	};
+	const float s = size / LITHOSPHERE_LEN;
+	const float wf = 1.0f / 15;
+	const float frq = 24;
+	for (uint32_t y = 0; y < size; ++ y)
+	for (uint32_t x = 0; x < size; ++ x) {
+		/* See lithosphere_init_mass for an explanation */
+		size_t i = y * size + x;
+		float u = (float)x / size;
+		float v = (float)y / size;
+		float nx = cosf(u*2*M_PI)*frq/(2*M_PI);
+		float ny = sinf(v*2*M_PI)*frq/(2*M_PI);
+		float nz = sinf(u*2*M_PI)*frq/(2*M_PI);
+		float nw = cosf(v*2*M_PI)*frq/(2*M_PI);
+		nx += opensimplex4_fbm(n[0], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
+		ny += opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
+		nz += opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
+		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
+		float wx = opensimplex4_fbm(n[4], nx, ny, nz, nw, 6, 2);
+		float wy = opensimplex4_fbm(n[5], nx, ny, nz, nw, 6, 2);
+		size_t iw = wrap(lroundf(y / s + frq * wx)) * LITHOSPHERE_LEN +
+		            wrap(lroundf(x / s + frq * wy));
+		uplift[i] = l->mass[iw];
+	}
+	for (size_t i = 0; i < 6; ++ i)
+		free(n[i]);
 }
 
 static void
-divergent_cell(struct lithosphere *l, uint32_t i, WELL512 rng,
+divergent_cell(struct lithosphere *l, uint32_t i,
                const struct tectonic_opts *opts)
 {
 	uint32_t po = l->prev_owner[i];
@@ -338,7 +274,7 @@ divergent_cell(struct lithosphere *l, uint32_t i, WELL512 rng,
 	h = powf(h-0.1f,2) + powf(0.5f-h,3);
 	float new_mass = TECTONIC_OCEAN_FLOOR_MASS + TECTONIC_CONTINENT_MASS * h;
 	if (l->generation % opts->rift_ticks == (opts->rift_ticks-1)) {
-		if (WELL512f(rng) <= opts->volcano_chance)
+		if (WELL512f(l->rng) <= opts->volcano_chance)
 			new_mass = opts->volcano_mass;
 		else
 			new_mass = opts->rift_mass;
@@ -348,7 +284,7 @@ divergent_cell(struct lithosphere *l, uint32_t i, WELL512 rng,
 }
 
 static void
-lithosphere_create_plates(struct lithosphere *l, WELL512 rng,
+lithosphere_create_plates(struct lithosphere *l,
                           const struct tectonic_opts *opts)
 {
 	/* Assign each cell an owner plate */
@@ -359,12 +295,12 @@ lithosphere_create_plates(struct lithosphere *l, WELL512 rng,
 
 	/* Create initial plates */
 	size_t plate_count = opts->min_plates +
-	                     (WELL512i(rng) % (opts->max_plates -
-	                                       opts->min_plates));
+	                     (WELL512i(l->rng) % (opts->max_plates -
+	                                          opts->min_plates));
 	for (uint32_t pi = 0; pi < plate_count; ++ pi) {
 		struct plate *p = vector_pushz(&l->plates);
 		reclaim: ;
-		uint32_t claim = WELL512i(rng) % LITHOSPHERE_AREA;
+		uint32_t claim = WELL512i(l->rng) % LITHOSPHERE_AREA;
 		if (l->owner[claim] != NO_PLATE)
 			goto reclaim; /* already claimed */
 		/* claim and mark as growing */
@@ -408,7 +344,7 @@ lithosphere_create_plates(struct lithosphere *l, WELL512 rng,
 				yp * LITHOSPHERE_LEN + x
 			};
 			/* Not very random. Will always access in pattern */
-			size_t rng_offset = WELL512i(rng) % 128;
+			size_t rng_offset = WELL512i(l->rng) % 128;
 			for (size_t n = 0; n < 4; ++ n) {
 				size_t i = (n + rng_offset) % 4;
 				uint32_t neighbor = neighbors[i];
@@ -461,32 +397,25 @@ lithosphere_create_plates(struct lithosphere *l, WELL512 rng,
 			if (l->owner[i] == pi)
 				p->mass[i] = l->mass[i];
 		}
-		plate_init_velocity(p, rng);
+		plate_init_velocity(p, l->rng);
 	}
 
 	ring_free(&growing);
 }
 
 static void
-lithosphere_destroy(struct lithosphere *l)
-{
-	vector_free(&l->collisions);
-	vector_free(&l->plates);
-}
-
-static void
-lithosphere_init_mass(struct lithosphere *l, WELL512 rng)
+lithosphere_init_mass(struct lithosphere *l)
 {
 	struct opensimplex *n[5] = {
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng))
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng)),
+		opensimplex_alloc(WELL512i(l->rng))
 	};
-	float max = FLT_MIN;
 	const float wf = 0.25f;
 	const float frq = 9.5f;
+
 	for (uint32_t y = 0; y < LITHOSPHERE_LEN; ++ y)
 	for (uint32_t x = 0; x < LITHOSPHERE_LEN; ++ x) {
 		size_t i = y * LITHOSPHERE_LEN + x;
@@ -519,8 +448,6 @@ lithosphere_init_mass(struct lithosphere *l, WELL512 rng)
 		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
 		l->mass[i] = opensimplex4_fbm(n[4], nx, ny, nz, nw, 6, 2);
 		l->mass[i] = 1.2f + 1.5f * l->mass[i];
-		if (l->mass[i] > max)
-			max = l->mass[i];
 	}
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i)
 		if (l->mass[i] < TECTONIC_OCEAN_FLOOR_MASS)
@@ -530,8 +457,8 @@ lithosphere_init_mass(struct lithosphere *l, WELL512 rng)
 }
 
 static void
-lithosphere_update(struct lithosphere *l, WELL512 rng,
-                   const struct tectonic_opts *opts)
+lithosphere_update_impl(struct lithosphere *l,
+                        const struct tectonic_opts *opts)
 {
 	++ l->generation;
 
@@ -626,51 +553,12 @@ lithosphere_update(struct lithosphere *l, WELL512 rng,
 	 */
 	for (uint32_t i = 0; i < LITHOSPHERE_AREA; ++ i)
 		if (l->owner[i] == NO_PLATE)
-			divergent_cell(l, i, rng, opts);
+			divergent_cell(l, i, opts);
 
 	/* Apply erosion */
 	if (l->generation % opts->erosion_ticks == 0)
 		for (uint32_t pi = 0; pi < plate_count; ++ pi)
 			plate_erode(l->plates + pi, opts);
-}
-
-static void
-lithosphere_warp(struct lithosphere *l, WELL512 rng,
-                 float *uplift, unsigned long uplift_size)
-{
-	struct opensimplex *n[6] = {
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng)),
-		opensimplex_alloc(WELL512i(rng))
-	};
-	const float s = uplift_size / LITHOSPHERE_LEN;
-	const float wf = 1.0f / 15;
-	const float frq = 24;
-	for (uint32_t y = 0; y < uplift_size; ++ y)
-	for (uint32_t x = 0; x < uplift_size; ++ x) {
-		/* See lithosphere_init_mass for an explanation */
-		size_t i = y * uplift_size + x;
-		float u = (float)x / uplift_size;
-		float v = (float)y / uplift_size;
-		float nx = cosf(u*2*M_PI)*frq/(2*M_PI);
-		float ny = sinf(v*2*M_PI)*frq/(2*M_PI);
-		float nz = sinf(u*2*M_PI)*frq/(2*M_PI);
-		float nw = cosf(v*2*M_PI)*frq/(2*M_PI);
-		nx += opensimplex4_fbm(n[0], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		ny += opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		nz += opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		float wx = opensimplex4_fbm(n[4], nx, ny, nz, nw, 6, 2);
-		float wy = opensimplex4_fbm(n[5], nx, ny, nz, nw, 6, 2);
-		size_t iw = wrap(lroundf(y / s + frq * wx)) * LITHOSPHERE_LEN +
-		            wrap(lroundf(x / s + frq * wy));
-		uplift[i] = l->mass[iw];
-	}
-	for (size_t i = 0; i < 6; ++ i)
-		free(n[i]);
 }
 
 static void
@@ -1072,46 +960,3 @@ plate_set_mass(struct plate *p, uint32_t wx, uint32_t wy,
 		p->in_segment[i] = si;
 	}
 }
-
-#ifdef HAMMER_DEBUG_TECTONIC
-static void
-debug_print(struct lithosphere *l, int draw_borders)
-{
-	float *img = xmalloc(LITHOSPHERE_AREA * sizeof(*img) * 3);
-	/* Blue below sealevel, green to white continent altitude */
-	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
-		if (l->mass[i] > TECTONIC_CONTINENT_MASS) {
-			float h = l->mass[i] - TECTONIC_CONTINENT_MASS;
-			img[i*3+2] = 0.235f + 0.265f / 2 * MIN(2,h);
-			img[i*3+1] = 0.5f;
-			img[i*3+0] = 0.235f + 0.265f / 2 * MIN(2,h);
-		} else {
-			img[i*3+2] = l->mass[i] / TECTONIC_CONTINENT_MASS;
-			img[i*3+1] = 0;
-			img[i*3+0] = 0;
-		}
-	}
-	/* Outline plates */
-	if (draw_borders) {
-		for (uint32_t y = 0; y < LITHOSPHERE_LEN; ++ y)
-		for (uint32_t x = 0; x < LITHOSPHERE_LEN; ++ x) {
-			size_t i  = y * LITHOSPHERE_LEN + x;
-			size_t xm = y * LITHOSPHERE_LEN + wrap((long)x-1);
-			size_t xp = y * LITHOSPHERE_LEN + wrap((long)x+1);
-			size_t ym = wrap((long)y-1) * LITHOSPHERE_LEN + x;
-			size_t yp = wrap((long)y+1) * LITHOSPHERE_LEN + x;
-			if (l->owner[i] != (l->owner[xm] & l->owner[xp] &
-					    l->owner[ym] & l->owner[yp]))
-			{
-				img[i*3+0] = 1;
-				img[i*3+1] = 0;
-				img[i*3+2] = 0;
-			}
-		}
-	}
-	char filename[32];
-	sprintf(filename, "plates%03d.png", l->generation);
-	write_rgb(filename, img, LITHOSPHERE_LEN, LITHOSPHERE_LEN);
-	free(img);
-}
-#endif

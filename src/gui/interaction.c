@@ -1,11 +1,11 @@
 #include "hammer/gui.h"
 #include "hammer/window.h"
 
-gui_button_state
-gui_button(gui_button_state prior_state,
+gui_btn_state
+gui_btn(gui_btn_state prior_state,
            const char *text,
            size_t len,
-           struct button_opts opts)
+           struct btn_opts opts)
 {
 	if (prior_state) {
 		uint32_t swap = opts.background;
@@ -46,15 +46,15 @@ gui_button(gui_button_state prior_state,
 		 * a click by dragging off the button before releasing.
 		 */
 		switch (prior_state) {
-		case GUI_BUTTON_PRESSED:
-		case GUI_BUTTON_HELD:
+		case GUI_BTN_PRESSED:
+		case GUI_BTN_HELD:
 			if (window.mouse_held[MOUSEBL])
-				return GUI_BUTTON_HELD;
+				return GUI_BTN_HELD;
 			else
-				return GUI_BUTTON_RELEASED;
+				return GUI_BTN_RELEASED;
 		default:
 			if (window.mouse_pressed[MOUSEBL])
-				return GUI_BUTTON_PRESSED;
+				return GUI_BTN_PRESSED;
 		}
 	}
 	return 0;

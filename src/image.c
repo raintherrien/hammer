@@ -159,12 +159,20 @@ load_texture(const char *filename, int *width, int *height)
 	GLenum internalformat;
 	switch (surface->format->BytesPerPixel) {
 	case 4:
-		format = (SDL_BYTEORDER == SDL_BIG_ENDIAN ? GL_BGRA : GL_RGBA);
-		internalformat = GL_RGBA;
+		format = GL_RGBA;
+		internalformat = GL_RGBA8;
 		break;
-	default /*3*/:
-		format = (SDL_BYTEORDER == SDL_BIG_ENDIAN ? GL_BGR : GL_RGB);
-		internalformat = GL_RGB;
+	case 3:
+		format = GL_RGB;
+		internalformat = GL_RGB8;
+		break;
+	case 2:
+		format = GL_RG;
+		internalformat = GL_RG8;
+		break;
+	default:
+		format = GL_RED;
+		internalformat = GL_R8;
 		break;
 	}
 

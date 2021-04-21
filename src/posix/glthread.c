@@ -8,7 +8,7 @@
 static struct {
 	_Atomic(glthread_callback) fn;
 	void             *arg;
-	void             *ret;
+	int               ret;
 	pthread_t         handle;
 	pthread_cond_t    cv;
 	pthread_mutex_t   mtx;
@@ -69,7 +69,7 @@ glthread_destroy(void)
 	pthread_cond_destroy(&glthread.cv);
 }
 
-void *
+int
 glthread_execute(glthread_callback fn, void *arg)
 {
 	pthread_mutex_lock(&glthread.mtx);
