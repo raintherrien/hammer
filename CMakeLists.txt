@@ -17,12 +17,12 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(cglm     REQUIRED)
 find_package(deadlock REQUIRED)
-find_package(delaunator-c REQUIRED)
-find_package(GLEW    REQUIRED)
-find_package(OpenGL  REQUIRED)
-find_package(PNG     REQUIRED)
-find_package(SDL2    REQUIRED COMPONENTS SDL2::SDL2 SDL2::main SDL2::image)
-find_package(Threads REQUIRED)
+find_package(delaunay REQUIRED)
+find_package(GLEW     REQUIRED)
+find_package(OpenGL   REQUIRED)
+find_package(PNG      REQUIRED)
+find_package(SDL2     REQUIRED COMPONENTS SDL2::SDL2 SDL2::main SDL2::image)
+find_package(Threads  REQUIRED)
 
 # Add warnings
 # Note: add_compile_options propegates these options to e.g. examples.
@@ -60,9 +60,8 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
                    ${PROJECT_SOURCE_DIR}/src/window.c)
 
-if(WIN32)
-	# Disable warnings about fopen in VS2019
-	target_compile_definitions(hammer PRIVATE _CRT_SECURE_NO_WARNINGS)
+# Assume MINGW uses POSIX threads
+if(WIN32 AND NOT MINGW)
 	set(HAMMER_SOURCES ${HAMMER_SOURCES}
 	                   ${PROJECT_SOURCE_DIR}/src/win32/glthread.c)
 else()
@@ -71,20 +70,26 @@ else()
 endif()
 
 add_executable(hammer ${HAMMER_SOURCES})
-target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include ${PNG_INCLUDE_DIR})
+target_include_directories(hammer PUBLIC ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(hammer m
                              cglm
                              deadlock
-                             delaunator-c
-                             ${PNG_LIBRARY}
-                             GL
-                             GLEW
-                             SDL2
+                             delaunay
+                             PNG::PNG
+                             OpenGL::GL
+                             GLEW::GLEW
+                             SDL2::SDL2main
+                             SDL2::SDL2
                              SDL2_image)
 target_compile_definitions(hammer
                            PRIVATE "HAMMER_VERSION_MAJOR=${hammer_VERSION_MAJOR}"
                            PRIVATE "HAMMER_VERSION_MINOR=${hammer_VERSION_MINOR}"
                            PRIVATE "HAMMER_VERSION_PATCH=${hammer_VERSION_PATCH}")
+
+if(WIN32)
+	# Disable warnings about fopen in VS2019
+	target_compile_definitions(hammer PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 
 add_custom_target(hammer_copy_resources
                    COMMAND ${CMAKE_COMMAND} -E copy_directory

@@ -2,7 +2,7 @@
 #include "hammer/error.h"
 #include "hammer/mem.h"
 #include "hammer/poisson.h"
-#include <delaunay/delaunator.h>
+#include <delaunay/delaunay.h>
 #include <delaunay/helper.h>
 #include <stddef.h>
 #include <stdlib.h>

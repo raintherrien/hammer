@@ -217,7 +217,7 @@ load_font_atlas(const char *fontname, GLenum texture)
 			format = GL_RG;
 			internalformat = GL_RG8;
 			break;
-		case 1:
+		default:
 			format = GL_RED;
 			internalformat = GL_R8;
 			break;
