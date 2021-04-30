@@ -1,6 +1,6 @@
 #include "hammer/appstate/world_config.h"
-#include "hammer/appstate/manager.h"
 #include "hammer/appstate/visualize_tectonic.h"
+#include "hammer/cli.h"
 #include "hammer/glthread.h"
 #include "hammer/mem.h"
 #include "hammer/version.h"
@@ -8,71 +8,86 @@
 #include <errno.h>
 #include <limits.h>
 
-static void world_config_entry(void *);
-static void world_config_exit(void *);
-static void world_config_loop(void *, struct appstate_cmd *);
+#define WORLDCONF_NUM_EDIT_BUFFER_LEN 32
+
+struct world_config_appstate {
+	dltask task;
+	struct rtargs args;
+	gui_btn_state next_btn_state;
+	gui_btn_state exit_btn_state;
+	char size_edit_buf[WORLDCONF_NUM_EDIT_BUFFER_LEN];
+	char seed_edit_buf[WORLDCONF_NUM_EDIT_BUFFER_LEN];
+};
+
+static void world_config_entry(DL_TASK_ARGS);
+static void world_config_loop(DL_TASK_ARGS);
+static void world_config_exit(DL_TASK_ARGS);
 
 static int world_config_gl_setup(void *);
 static int world_config_gl_frame(void *);
 
-struct appstate
-appstate_world_config_alloc(struct rtargs args)
+dltask *
+world_config_appstate_alloc_detached(struct rtargs *args)
 {
-	struct appstate_world_config *state = xmalloc(sizeof(*state));
-
-	*state = (struct appstate_world_config) {
-		.args = args
-	};
-
-	return (struct appstate) {
-		.entry_fn = world_config_entry,
-		.exit_fn  = world_config_exit,
-		.loop_fn  = world_config_loop,
-		.arg      = state
-	};
+	struct world_config_appstate *world_config =
+		xmalloc(sizeof(*world_config));
+	world_config->task = DL_TASK_INIT(world_config_entry);
+	world_config->args = *args;
+	return &world_config->task;
 }
 
 static void
-world_config_entry(void *state_)
+world_config_entry(DL_TASK_ARGS)
 {
-	struct appstate_world_config *state = state_;
+	DL_TASK_ENTRY(struct world_config_appstate, world_config, task);
 
-	glthread_execute(world_config_gl_setup, NULL);
-	snprintf(state->size_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN,
-	         "%ld", state->args.size);
-	snprintf(state->seed_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN,
-	         "%lld", state->args.seed);
-	state->next_btn_state = 0;
-	state->exit_btn_state = 0;
+	glthread_execute(world_config_gl_setup, world_config);
+	snprintf(world_config->size_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN,
+	         "%ld", world_config->args.size);
+	snprintf(world_config->seed_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN,
+	         "%lld", world_config->args.seed);
+	world_config->next_btn_state = 0;
+	world_config->exit_btn_state = 0;
+
+	dltail(&world_config->task, world_config_loop);
 }
 
 static void
-world_config_exit(void *_)
+world_config_loop(DL_TASK_ARGS)
 {
-	(void)_;
-}
+	DL_TASK_ENTRY(struct world_config_appstate, world_config, task);
 
-static void
-world_config_loop(void *state_, struct appstate_cmd *cmd)
-{
-	struct appstate_world_config *state = state_;
-
-	if (glthread_execute(world_config_gl_frame, state))
-		cmd->type = APPSTATE_CMD_POP;
-
-	if (state->exit_btn_state == GUI_BTN_RELEASED)
-		cmd->type = APPSTATE_CMD_POP;
-
-	if (state->next_btn_state == GUI_BTN_RELEASED) {
-		cmd->type = APPSTATE_CMD_SWAP;
-		cmd->newstate = appstate_visualize_tectonic_alloc(state->args);
+	if (glthread_execute(world_config_gl_frame, world_config) ||
+	    world_config->exit_btn_state == GUI_BTN_RELEASED)
+	{
+		dltail(&world_config->task, world_config_exit);
+		return;
 	}
+
+	if (world_config->next_btn_state == GUI_BTN_RELEASED) {
+		dltask *next = visualize_tectonic_appstate_alloc_detached(
+		                 &world_config->args);
+		dlcontinuation(&world_config->task, world_config_entry);
+		dlwait(&world_config->task, 1);
+		dlnext(next, &world_config->task);
+		dlasync(next);
+		return;
+	}
+
+	dltail(&world_config->task, world_config_loop);
+}
+
+static void
+world_config_exit(DL_TASK_ARGS)
+{
+	DL_TASK_ENTRY(struct world_config_appstate, world_config, task);
+	free(world_config);
 }
 
 static int
-world_config_gl_setup(void *_)
+world_config_gl_setup(void *world_config)
 {
-	(void) _;
+	(void) world_config;
 
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
@@ -80,9 +95,9 @@ world_config_gl_setup(void *_)
 }
 
 static int
-world_config_gl_frame(void *state_)
+world_config_gl_frame(void *world_config_)
 {
-	struct appstate_world_config *state = state_;
+	struct world_config_appstate *world_config = world_config_;
 
 	if (window_startframe())
 		return 1;
@@ -191,8 +206,8 @@ world_config_gl_frame(void *state_)
 	gui_text(title, strlen(title), title_opts);
 	gui_text(size_label, strlen(size_label), size_label_opts);
 	gui_text(seed_label, strlen(seed_label), seed_label_opts);
-	gui_edit(state->size_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN, size_edit_opts);
-	gui_edit(state->seed_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN, seed_edit_opts);
+	gui_edit(world_config->size_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN, size_edit_opts);
+	gui_edit(world_config->seed_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN, seed_edit_opts);
 
 	unsigned long parsed_size;
 	unsigned long long parsed_seed;
@@ -200,18 +215,18 @@ world_config_gl_frame(void *state_)
 		char *endptr;
 		size_t buflen;
 		errno = 0;
-		buflen = strlen(state->size_edit_buf);
-		parsed_size = strtoul(state->size_edit_buf, &endptr, 10);
-		if ((size_t)(endptr - state->size_edit_buf) != buflen ||
+		buflen = strlen(world_config->size_edit_buf);
+		parsed_size = strtoul(world_config->size_edit_buf, &endptr, 10);
+		if ((size_t)(endptr - world_config->size_edit_buf) != buflen ||
 		    buflen == 0 ||
 		    errno != 0)
 		{
 			parsed_size = ULONG_MAX;
 		}
 		errno = 0;
-		buflen = strlen(state->seed_edit_buf);
-		parsed_seed = strtoull(state->seed_edit_buf, &endptr, 10);
-		if ((size_t)(endptr - state->seed_edit_buf) != buflen ||
+		buflen = strlen(world_config->seed_edit_buf);
+		parsed_seed = strtoull(world_config->seed_edit_buf, &endptr, 10);
+		if ((size_t)(endptr - world_config->seed_edit_buf) != buflen ||
 		    buflen == 0 ||
 		    errno != 0)
 		{
@@ -231,16 +246,16 @@ world_config_gl_frame(void *state_)
 		gui_text_center(err_label, strlen(err_label),
 		                window.width / 2, err_opts);
 	} else {
-		state->args.size = parsed_size;
-		state->args.seed = parsed_seed;
-		state->next_btn_state = gui_btn(
-			state->next_btn_state,
+		world_config->args.size = parsed_size;
+		world_config->args.seed = parsed_seed;
+		world_config->next_btn_state = gui_btn(
+			world_config->next_btn_state,
 			next_btn_text, strlen(next_btn_text),
 			next_btn_opts);
 	}
 
-	state->exit_btn_state = gui_btn(
-		state->exit_btn_state,
+	world_config->exit_btn_state = gui_btn(
+		world_config->exit_btn_state,
 		exit_btn_text, strlen(exit_btn_text),
 		exit_btn_opts);
 

@@ -2,17 +2,7 @@
 #include "hammer/error.h"
 #include "hammer/vector.h"
 #include <errno.h>
-
-/* Prototypes for GUI subsystems window manages */
-void gui_img_init(void);
-void gui_img_deinit(void);
-void gui_img_render(void);
-void gui_rect_init(void);
-void gui_rect_deinit(void);
-void gui_rect_render(void);
-void gui_text_init(void);
-void gui_text_deinit(void);
-void gui_text_render(void);
+#include <cglm/cam.h>
 
 struct window window;
 
@@ -156,9 +146,20 @@ window_create(void)
 
 	window.keydown = SDL_GetKeyboardState(NULL);
 
-	gui_img_init();
-	gui_rect_init();
-	gui_text_init();
+	gui_text_renderer_create(&window.gui_text_renderer);
+	gui_img_renderer_create(&window.gui_img_renderer);
+	gui_rect_renderer_create(&window.gui_rect_renderer);
+
+	for (size_t i = 0; i < FRAMES_IN_FLIGHT; ++ i) {
+		gui_text_frame_create(&window.gui_text_renderer,
+		                      &window.frames[i].gui_text_frame);
+		gui_rect_frame_create(&window.gui_rect_renderer,
+		                      &window.frames[i].gui_rect_frame);
+		window.frames[i].fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		window.frames[i].id = i;
+	}
+	window.current_frame_id = FRAMES_IN_FLIGHT;
+	window.current_frame = window.frames;
 
 	window.should_close = 0;
 }
@@ -166,9 +167,16 @@ window_create(void)
 void
 window_destroy(void)
 {
-	gui_img_deinit();
-	gui_rect_deinit();
-	gui_text_deinit();
+	for (size_t i = 0; i < FRAMES_IN_FLIGHT; ++ i) {
+		glClientWaitSync(window.frames[i].fence,
+		                 GL_SYNC_FLUSH_COMMANDS_BIT,
+		                 (GLuint64)-1);
+		gui_rect_frame_destroy(&window.frames[i].gui_rect_frame);
+		gui_text_frame_destroy(&window.frames[i].gui_text_frame);
+	}
+	gui_rect_renderer_destroy(&window.gui_rect_renderer);
+	gui_img_renderer_destroy(&window.gui_img_renderer);
+	gui_text_renderer_destroy(&window.gui_text_renderer);
 	vector_free(&window.frame_events);
 	SDL_GL_DeleteContext(window.glcontext);
 	SDL_DestroyWindow(window.handle);
@@ -178,25 +186,24 @@ window_destroy(void)
 int
 window_startframe(void)
 {
-	size_t new_frame = (++ window.current_frame) % FRAMES_IN_FLIGHT;
+	size_t new_frame = (++ window.current_frame_id) % FRAMES_IN_FLIGHT;
+	window.current_frame = &window.frames[new_frame];
 
 	/* Wait for next frame in ring buffer to complete */
-	GLsync recycling_fence = window.frames[new_frame].fence;
-	if (recycling_fence) {
-		GLenum status = GL_TIMEOUT_EXPIRED;
-		while (status == GL_TIMEOUT_EXPIRED) {
-			status = glClientWaitSync(recycling_fence,
-						  GL_SYNC_FLUSH_COMMANDS_BIT,
-						  (GLuint64)-1);
-			if (status == GL_WAIT_FAILED)
-				xpanic("Error waiting on frame fence");
-		}
-		glDeleteSync(recycling_fence);
-		window.frames[new_frame].fence = 0;
+	GLsync recycling_fence = window.current_frame->fence;
+	GLenum status = GL_TIMEOUT_EXPIRED;
+	while (status == GL_TIMEOUT_EXPIRED) {
+		status = glClientWaitSync(recycling_fence,
+					  GL_SYNC_FLUSH_COMMANDS_BIT,
+					  (GLuint64)-1);
+		if (status == GL_WAIT_FAILED)
+			xpanic("Error waiting on frame fence");
 	}
+	glDeleteSync(recycling_fence);
+	window.current_frame->fence = 0;
 
 	/* Begin this frame */
-	window.frames[new_frame].id = new_frame;
+	window.current_frame->id = new_frame;
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	window.motion_x = 0;
@@ -275,18 +282,22 @@ window_startframe(void)
 	window.mouse_held[MOUSEBR] = ms & SDL_BUTTON(SDL_BUTTON_RIGHT);
 	window.mouse_held[MOUSEBM] = ms & SDL_BUTTON(SDL_BUTTON_MIDDLE);
 
+	/* 0,0 top left */
+	glm_ortho(0, window.width, window.height, 0, -1000, 1, window.ortho_matrix);
+
+
 	return window.should_close;
 }
 
 void
 window_submitframe(void)
 {
-	gui_rect_render();
-	gui_text_render();
-
-	size_t frameid = window.current_frame % FRAMES_IN_FLIGHT;
+	gui_rect_render(&window.gui_rect_renderer,
+	                &window.current_frame->gui_rect_frame);
+	gui_text_render(&window.gui_text_renderer,
+	                &window.current_frame->gui_text_frame);
 
 	/* Create fence to complete when this frame is rendered */
 	SDL_GL_SwapWindow(window.handle);
-	window.frames[frameid].fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	window.current_frame->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 }

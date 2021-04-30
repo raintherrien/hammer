@@ -1,12 +1,18 @@
 #ifndef HAMMER_WINDOW_H_
 #define HAMMER_WINDOW_H_
 
+#include "hammer/gui/img.h"
+#include "hammer/gui/rect.h"
+#include "hammer/gui/text.h"
+#include <cglm/mat4.h>
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 
 #define FRAMES_IN_FLIGHT 1
 
 struct frame {
+	struct gui_text_frame gui_text_frame;
+	struct gui_rect_frame gui_rect_frame;
 	GLsync fence;
 	size_t id;
 };
@@ -21,13 +27,19 @@ enum {
 #define MAX_TEXT_INPUT_LEN 64
 
 struct window {
+	struct gui_text_renderer gui_text_renderer;
+	struct gui_img_renderer gui_img_renderer;
+	struct gui_rect_renderer gui_rect_renderer;
+
 	SDL_Window   *handle;
 	const Uint8  *keydown;
 	SDL_Event    *frame_events;
 	SDL_GLContext glcontext;
 	struct frame  frames[FRAMES_IN_FLIGHT];
-	size_t        current_frame;
+	struct frame *current_frame;
+	size_t        current_frame_id;
 	size_t        text_input_len;
+	mat4          ortho_matrix;
 	SDL_Keymod    keymod;
 	int           motion_x, motion_y;
 	int           mouse_x, mouse_y;

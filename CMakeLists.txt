@@ -34,7 +34,6 @@ endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/manager.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/visualize_tectonic.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/world_config.c
                    ${PROJECT_SOURCE_DIR}/src/gui/img.c
@@ -78,8 +77,7 @@ target_link_libraries(hammer m
                              PNG::PNG
                              OpenGL::GL
                              GLEW::GLEW
-                             SDL2::SDL2main
-                             SDL2::SDL2
+                             SDL2
                              SDL2_image)
 target_compile_definitions(hammer
                            PRIVATE "HAMMER_VERSION_MAJOR=${hammer_VERSION_MAJOR}"

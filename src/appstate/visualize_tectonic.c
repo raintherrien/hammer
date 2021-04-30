@@ -1,86 +1,106 @@
 #include "hammer/appstate/visualize_tectonic.h"
-#include "hammer/appstate/manager.h"
+#include "hammer/cli.h"
 #include "hammer/error.h"
 #include "hammer/glthread.h"
+#include "hammer/gui.h"
 #include "hammer/math.h"
 #include "hammer/mem.h"
 #include "hammer/window.h"
+#include "hammer/worldgen/tectonic.h"
 
-static void visualize_tectonic_entry(void *);
-static void visualize_tectonic_exit(void *);
-static void visualize_tectonic_loop(void *, struct appstate_cmd *);
+#define PROGRESS_STR_MAX_LEN 64
+
+struct visualize_tectonic_appstate {
+	dltask task;
+	struct rtargs args;
+	struct tectonic_opts tectonic_opts;
+	struct lithosphere lithosphere;
+	gui_btn_state cancel_btn_state;
+	GLuint tectonic_img;
+	char progress_str[PROGRESS_STR_MAX_LEN];
+};
+
+static void visualize_tectonic_entry(DL_TASK_ARGS);
+static void visualize_tectonic_exit (DL_TASK_ARGS);
+static void visualize_tectonic_loop (DL_TASK_ARGS);
 
 static int visualize_tectonic_gl_setup(void *);
 static int visualize_tectonic_gl_frame(void *);
 
-static void blit_lithosphere_to_image(struct appstate_visualize_tectonic *);
+static void blit_lithosphere_to_image(struct visualize_tectonic_appstate *);
 
-struct appstate
-appstate_visualize_tectonic_alloc(struct rtargs args)
+dltask *
+visualize_tectonic_appstate_alloc_detached(struct rtargs *args)
 {
-	struct appstate_visualize_tectonic *state = xmalloc(sizeof(*state));
+	struct visualize_tectonic_appstate *viz = xmalloc(sizeof(*viz));
 
-	state->args = args;
+	viz->task = DL_TASK_INIT(visualize_tectonic_entry);
+	viz->args = *args;
 	/* TODO: Set in world_config */
-	state->tectonic_opts = (struct tectonic_opts) {
+	viz->tectonic_opts = (struct tectonic_opts) {
 		TECTONIC_OPTS_DEFAULTS,
-		.seed = args.seed
+		.seed = args->seed
 	};
 
-	return (struct appstate) {
-		.entry_fn = visualize_tectonic_entry,
-		.exit_fn  = visualize_tectonic_exit,
-		.loop_fn  = visualize_tectonic_loop,
-		.arg      = state
-	};
+	return &viz->task;
 }
 
 static void
-visualize_tectonic_entry(void *state_)
+visualize_tectonic_entry(DL_TASK_ARGS)
 {
-	struct appstate_visualize_tectonic *state = state_;
-	lithosphere_create(&state->lithosphere, &state->tectonic_opts);
-	glthread_execute(visualize_tectonic_gl_setup, state);
-	state->cancel_btn_state = 0;
+	DL_TASK_ENTRY(struct visualize_tectonic_appstate, viz, task);
+
+	lithosphere_create(&viz->lithosphere, &viz->tectonic_opts);
+	glthread_execute(visualize_tectonic_gl_setup, viz);
+	viz->cancel_btn_state = 0;
+
+	dltail(&viz->task, visualize_tectonic_loop);
 }
 
 static void
-visualize_tectonic_exit(void *state_)
+visualize_tectonic_exit(DL_TASK_ARGS)
 {
-	struct appstate_visualize_tectonic *state = state_;
-	lithosphere_destroy(&state->lithosphere);
+	DL_TASK_ENTRY(struct visualize_tectonic_appstate, viz, task);
+
+	lithosphere_destroy(&viz->lithosphere);
+	free(viz);
 }
 
 static void
-visualize_tectonic_loop(void *state_, struct appstate_cmd *cmd)
+visualize_tectonic_loop(DL_TASK_ARGS)
 {
-	struct appstate_visualize_tectonic *state = state_;
+	DL_TASK_ENTRY(struct visualize_tectonic_appstate, viz, task);
 
-	size_t steps = state->tectonic_opts.generations *
-	                 state->tectonic_opts.generation_steps;
-	if (state->lithosphere.generation > steps)
+	size_t steps = viz->tectonic_opts.generations *
+	                 viz->tectonic_opts.generation_steps;
+	if (viz->lithosphere.generation > steps)
 	{
 		/* TODO: Next step */
+		dltail(&viz->task, visualize_tectonic_loop);
+		return;
 	}
 
-	lithosphere_update(&state->lithosphere, &state->tectonic_opts);
+	lithosphere_update(&viz->lithosphere, &viz->tectonic_opts);
 
-	if (glthread_execute(visualize_tectonic_gl_frame, state))
-		cmd->type = APPSTATE_CMD_POP;
+	if (glthread_execute(visualize_tectonic_gl_frame, viz) ||
+	    viz->cancel_btn_state == GUI_BTN_RELEASED)
+	{
+		dltail(&viz->task, visualize_tectonic_exit);
+		return;
+	}
 
-	if (state->cancel_btn_state == GUI_BTN_RELEASED)
-		cmd->type = APPSTATE_CMD_POP;
+	dltail(&viz->task, visualize_tectonic_loop);
 }
 
 static int
-visualize_tectonic_gl_setup(void *state_)
+visualize_tectonic_gl_setup(void *viz_)
 {
-	struct appstate_visualize_tectonic *state = state_;
+	struct visualize_tectonic_appstate *viz = viz_;
 
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
-	glGenTextures(1, &state->tectonic_img);
-	glBindTexture(GL_TEXTURE_2D, state->tectonic_img);
+	glGenTextures(1, &viz->tectonic_img);
+	glBindTexture(GL_TEXTURE_2D, viz->tectonic_img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_RGB8,
 	                            LITHOSPHERE_LEN, LITHOSPHERE_LEN,
@@ -88,25 +108,25 @@ visualize_tectonic_gl_setup(void *state_)
 	                            GL_RGB,
 	                            GL_UNSIGNED_BYTE,
 	                            NULL);
-	glTextureParameteri(state->tectonic_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(state->tectonic_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(state->tectonic_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(state->tectonic_img, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTextureParameteri(state->tectonic_img, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glGenerateTextureMipmap(state->tectonic_img);
+	glTextureParameteri(viz->tectonic_img, GL_TEXTURE_MAX_LEVEL, 0);
+	glTextureParameteri(viz->tectonic_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTextureParameteri(viz->tectonic_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTextureParameteri(viz->tectonic_img, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTextureParameteri(viz->tectonic_img, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glGenerateTextureMipmap(viz->tectonic_img);
 
 	return 0;
 }
 
 static int
-visualize_tectonic_gl_frame(void *state_)
+visualize_tectonic_gl_frame(void *viz_)
 {
-	struct appstate_visualize_tectonic *state = state_;
+	struct visualize_tectonic_appstate *viz = viz_;
 
 	if (window_startframe())
 		return 1;
 
-	blit_lithosphere_to_image(state);
+	blit_lithosphere_to_image(viz);
 
 	unsigned font_size = 24;
 	unsigned padding = 32;
@@ -117,11 +137,11 @@ visualize_tectonic_gl_frame(void *state_)
 	unsigned btn_height = font_size + 16;
 	unsigned cancel_btn_width = window.width / 2;
 
-	snprintf(state->progress_str, PROGRESS_STR_MAX_LEN,
+	snprintf(viz->progress_str, PROGRESS_STR_MAX_LEN,
 	         "Generation: %ld/%ld",
-	         (long)state->lithosphere.generation,
-	         (long)state->tectonic_opts.generations *
-	               state->tectonic_opts.generation_steps);
+	         (long)viz->lithosphere.generation,
+	         (long)viz->tectonic_opts.generations *
+	               viz->tectonic_opts.generation_steps);
 
 	struct text_opts title_opts = {
 		TEXT_OPTS_DEFAULTS,
@@ -161,14 +181,14 @@ visualize_tectonic_gl_frame(void *state_)
 	};
 
 	gui_text(title, strlen(title), title_opts);
-	gui_text(state->progress_str, strlen(state->progress_str), progress_opts);
+	gui_text(viz->progress_str, strlen(viz->progress_str), progress_opts);
 
-	state->cancel_btn_state = gui_btn(
-		state->cancel_btn_state,
+	viz->cancel_btn_state = gui_btn(
+		viz->cancel_btn_state,
 		cancel_btn_text, strlen(cancel_btn_text),
 		cancel_btn_opts);
 
-	gui_img(state->tectonic_img, tectonic_img_opts);
+	gui_img(viz->tectonic_img, tectonic_img_opts);
 
 	window_submitframe();
 
@@ -176,9 +196,9 @@ visualize_tectonic_gl_frame(void *state_)
 }
 
 static void
-blit_lithosphere_to_image(struct appstate_visualize_tectonic *state)
+blit_lithosphere_to_image(struct visualize_tectonic_appstate *viz)
 {
-	struct lithosphere *l = &state->lithosphere;
+	struct lithosphere *l = &viz->lithosphere;
 	GLubyte *img = xmalloc(LITHOSPHERE_AREA * sizeof(*img) * 3);
 	/* Blue below sealevel, green to white continent altitude */
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
@@ -210,7 +230,7 @@ blit_lithosphere_to_image(struct appstate_visualize_tectonic *state)
 		}
 	}
 	*/
-	glTextureSubImage2D(state->tectonic_img,
+	glTextureSubImage2D(viz->tectonic_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
 	                    LITHOSPHERE_LEN, LITHOSPHERE_LEN, /* w,h */

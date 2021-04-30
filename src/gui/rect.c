@@ -1,3 +1,4 @@
+#include "hammer/gui/rect.h"
 #include "hammer/gui.h"
 #include "hammer/error.h"
 #include "hammer/glsl.h"
@@ -10,94 +11,85 @@
 
 #define RECT_VBO_SIZE 1048576
 
-struct rect_vert {
-	GLfloat position[3];
-	GLfloat color[4];
-};
-
-/*
- * Global state of rect renderer.
- */
-struct {
-	struct rect_vert *buffer[FRAMES_IN_FLIGHT];
-	size_t buffer_count[FRAMES_IN_FLIGHT];
-	GLuint shader;
-	GLuint uniform_ortho;
-	GLuint vao;
-	GLuint vbo[FRAMES_IN_FLIGHT];
-} gui_rect_renderer;
-
 void
-gui_rect_init(void)
+gui_rect_renderer_create(struct gui_rect_renderer *renderer)
 {
-	gui_rect_renderer.shader = compile_shader_program(
-	                             "resources/shaders/gui_rect.vs",
-	                             NULL, /* no GS */
-	                             "resources/shaders/gui_rect.fs");
-	if (gui_rect_renderer.shader == 0)
+	renderer->shader = compile_shader_program(
+	                     "resources/shaders/gui_rect.vs",
+	                     NULL, /* no GS */
+	                     "resources/shaders/gui_rect.fs");
+	if (renderer->shader == 0)
 		xpanic("Error creating GUI rect shader");
-	glUseProgram(gui_rect_renderer.shader);
+	glUseProgram(renderer->shader);
 
-	gui_rect_renderer.uniform_ortho = glGetUniformLocation(gui_rect_renderer.shader, "ortho");
+	renderer->uniform_ortho = glGetUniformLocation(renderer->shader, "ortho");
 
-	glGenVertexArrays(1, &gui_rect_renderer.vao);
-	glBindVertexArray(gui_rect_renderer.vao);
+	glGenVertexArrays(1, &renderer->vao);
+	glBindVertexArray(renderer->vao);
 
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
+}
 
-	glGenBuffers(FRAMES_IN_FLIGHT, gui_rect_renderer.vbo);
+void
+gui_rect_renderer_destroy(struct gui_rect_renderer *renderer)
+{
+	glDeleteVertexArrays(1, &renderer->vao);
+	glDeleteProgram(renderer->shader);
+}
+
+void
+gui_rect_frame_create(struct gui_rect_renderer *renderer,
+                      struct gui_rect_frame *frame)
+{
+	glBindVertexArray(renderer->vao);
+	
+	glGenBuffers(1, &frame->vbo);
 	GLbitfield flags = GL_MAP_WRITE_BIT |
 	                   GL_MAP_PERSISTENT_BIT |
 	                   GL_MAP_COHERENT_BIT;
-	for (size_t i = 0; i < FRAMES_IN_FLIGHT; ++ i) {
-		glBindBuffer(GL_ARRAY_BUFFER, gui_rect_renderer.vbo[i]);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(struct rect_vert), (void *)offsetof(struct rect_vert,position));
-		glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(struct rect_vert), (void *)offsetof(struct rect_vert,color));
-		glBufferStorage(GL_ARRAY_BUFFER, RECT_VBO_SIZE, 0, flags);
-		gui_rect_renderer.buffer[i] = glMapBufferRange(GL_ARRAY_BUFFER, 0,
-		                                               RECT_VBO_SIZE, flags);
-		gui_rect_renderer.buffer_count[i] = 0;
-	}
+	const size_t VS = sizeof(struct gui_rect_vert);
+	const size_t offset[2] = {
+		offsetof(struct gui_rect_vert, position),
+		offsetof(struct gui_rect_vert, color)
+	};
+	glBindBuffer(GL_ARRAY_BUFFER, frame->vbo);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, VS, (void *)offset[0]);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, VS, (void *)offset[1]);
+	glBufferStorage(GL_ARRAY_BUFFER, RECT_VBO_SIZE, 0, flags);
+	frame->vb = glMapBufferRange(GL_ARRAY_BUFFER, 0, RECT_VBO_SIZE, flags);
+	frame->vb_vc = 0;
 }
 
 void
-gui_rect_deinit(void)
+gui_rect_frame_destroy(struct gui_rect_frame *frame)
 {
-	glBindVertexArray(gui_rect_renderer.vao);
-	for (size_t i = 0; i < FRAMES_IN_FLIGHT; ++ i)
-		glUnmapNamedBuffer(gui_rect_renderer.vbo[i]);
-
-	glDeleteBuffers(FRAMES_IN_FLIGHT, gui_rect_renderer.vbo);
-	glDeleteVertexArrays(1, &gui_rect_renderer.vao);
-	glDeleteProgram(gui_rect_renderer.shader);
+	glUnmapNamedBuffer(frame->vbo);
+	glDeleteBuffers(1, &frame->vbo);
 }
 
 void
-gui_rect_render(void)
+gui_rect_render(struct gui_rect_renderer *renderer,
+                struct gui_rect_frame *frame)
 {
-	size_t f = window.current_frame % FRAMES_IN_FLIGHT;
+	if (frame->vb_vc == 0)
+		return;
 
-	/* 0,0 top left */
-	mat4 ortho_matrix;
-	glm_ortho(0, window.width, window.height, 0, -1000, 1, ortho_matrix);
-
-	if (gui_rect_renderer.buffer_count[f]) {
-		glUseProgram(gui_rect_renderer.shader);
-		glBindVertexArray(gui_rect_renderer.vao);
-		glUniformMatrix4fv(gui_rect_renderer.uniform_ortho,
-		                   1, GL_FALSE, (float *)ortho_matrix);
-		glBindBuffer(GL_ARRAY_BUFFER, gui_rect_renderer.vbo[f]);
-		glDrawArrays(GL_TRIANGLES, 0, gui_rect_renderer.buffer_count[f]);
-		gui_rect_renderer.buffer_count[f] = 0;
-	}
+	glUseProgram(renderer->shader);
+	glBindVertexArray(renderer->vao);
+	glUniformMatrix4fv(renderer->uniform_ortho,
+			   1, GL_FALSE, (float *)window.ortho_matrix);
+	glBindBuffer(GL_ARRAY_BUFFER, frame->vbo);
+	glDrawArrays(GL_TRIANGLES, 0, frame->vb_vc);
+	frame->vb_vc = 0;
 }
 
 void
 gui_rect(struct rect_opts opts)
 {
-	const size_t VS = sizeof(struct rect_vert);
-	size_t f = (window.current_frame + 1) % FRAMES_IN_FLIGHT;
+	struct gui_rect_frame *frame = &window.current_frame->gui_rect_frame;
+	
+	const size_t VS = sizeof(struct gui_rect_vert);
 	float r = ((opts.color & 0xff000000) >> 24) / 255.0f;
 	float g = ((opts.color & 0x00ff0000) >> 16) / 255.0f;
 	float b = ((opts.color & 0x0000ff00) >>  8) / 255.0f;
@@ -107,10 +99,10 @@ gui_rect(struct rect_opts opts)
 	float y0 = opts.yoffset;
 	float y1 = opts.yoffset + opts.height;
 
-	if ((gui_rect_renderer.buffer_count[f]+6) * VS >= RECT_VBO_SIZE)
+	if ((frame->vb_vc + 6) * VS >= RECT_VBO_SIZE)
 		return;
 
-	struct rect_vert vs[6] = {
+	struct gui_rect_vert vs[6] = {
 		{ .position = {x0, y0, 0}, .color = {r, g, b, a} },
 		{ .position = {x1, y1, 0}, .color = {r, g, b, a} },
 		{ .position = {x1, y0, 0}, .color = {r, g, b, a} },
@@ -119,7 +111,7 @@ gui_rect(struct rect_opts opts)
 		{ .position = {x1, y1, 0}, .color = {r, g, b, a} },
 		{ .position = {x0, y0, 0}, .color = {r, g, b, a} }
 	};
-	size_t vi = gui_rect_renderer.buffer_count[f];
-	memcpy(gui_rect_renderer.buffer[f] + vi, vs, VS * 6);
-	gui_rect_renderer.buffer_count[f] += 6;
+	size_t vi = frame->vb_vc;
+	memcpy(frame->vb + vi, vs, VS * 6);
+	frame->vb_vc += 6;
 }

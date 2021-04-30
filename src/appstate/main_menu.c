@@ -1,76 +1,91 @@
 #include "hammer/appstate/main_menu.h"
-#include "hammer/appstate/manager.h"
 #include "hammer/appstate/world_config.h"
+#include "hammer/cli.h"
 #include "hammer/glthread.h"
+#include "hammer/gui.h"
 #include "hammer/mem.h"
 #include "hammer/version.h"
 #include "hammer/window.h"
 
-static void main_menu_entry(void *);
-static void main_menu_exit(void *);
-static void main_menu_loop(void *, struct appstate_cmd *);
+#define VERSION_STR_MAX_LEN 128
+
+struct main_menu_appstate {
+	dltask task;
+	struct rtargs args;
+	gui_btn_state exit_btn_state;
+	gui_btn_state generate_new_world_btn_state;
+	char version_str[VERSION_STR_MAX_LEN];
+};
+
+static void main_menu_entry(DL_TASK_ARGS);
+static void main_menu_exit (DL_TASK_ARGS);
+static void main_menu_loop (DL_TASK_ARGS);
 
 static int main_menu_gl_setup(void *);
 static int main_menu_gl_frame(void *);
 
-struct appstate
-appstate_main_menu_alloc(struct rtargs args)
+dltask *
+main_menu_appstate_alloc_detached(struct rtargs *args)
 {
-	struct appstate_main_menu *state = xmalloc(sizeof(*state));
-
-	*state = (struct appstate_main_menu) {
-		.args = args
-	};
-
-	return (struct appstate) {
-		.entry_fn = main_menu_entry,
-		.exit_fn  = main_menu_exit,
-		.loop_fn  = main_menu_loop,
-		.arg      = state
-	};
+	struct main_menu_appstate *main_menu = xmalloc(sizeof(*main_menu));
+	main_menu->task = DL_TASK_INIT(main_menu_entry);
+	main_menu->args = *args;
+	return &main_menu->task;
 }
 
 static void
-main_menu_entry(void *state_)
+main_menu_entry(DL_TASK_ARGS)
 {
-	struct appstate_main_menu *state = state_;
+	DL_TASK_ENTRY(struct main_menu_appstate, main_menu, task);
 
-	glthread_execute(main_menu_gl_setup, NULL);
-	snprintf(state->version_str, VERSION_STR_MAX_LEN,
+	glthread_execute(main_menu_gl_setup, main_menu);
+	snprintf(main_menu->version_str, VERSION_STR_MAX_LEN,
 	         "v%d.%d.%d %d by Rain Therrien, https://github.com/raintherrien/hammer",
 	         HAMMER_VERSION_MAJOR, HAMMER_VERSION_MINOR, HAMMER_VERSION_PATCH,
 	         build_date_code());
-	state->exit_btn_state = 0;
-	state->generate_new_world_btn_state = 0;
+	main_menu->exit_btn_state = 0;
+	main_menu->generate_new_world_btn_state = 0;
+
+	dltail(&main_menu->task, main_menu_loop);
 }
 
 static void
-main_menu_exit(void *_)
+main_menu_exit(DL_TASK_ARGS)
 {
-	(void)_;
+	DL_TASK_ENTRY(struct main_menu_appstate, main_menu, task);
+	free(main_menu);
+	dlterminate();
 }
 
 static void
-main_menu_loop(void *state_, struct appstate_cmd *cmd)
+main_menu_loop(DL_TASK_ARGS)
 {
-	struct appstate_main_menu *state = state_;
+	DL_TASK_ENTRY(struct main_menu_appstate, main_menu, task);
 
-	if (glthread_execute(main_menu_gl_frame, state))
-		cmd->type = APPSTATE_CMD_POP;
-
-	if (state->exit_btn_state == GUI_BTN_RELEASED)
-		cmd->type = APPSTATE_CMD_POP;
-
-	if (state->generate_new_world_btn_state == GUI_BTN_RELEASED) {
-		cmd->type = APPSTATE_CMD_PUSH;
-		cmd->newstate = appstate_world_config_alloc(state->args);
+	if (glthread_execute(main_menu_gl_frame, main_menu) ||
+	    main_menu->exit_btn_state == GUI_BTN_RELEASED)
+	{
+		dltail(&main_menu->task, main_menu_exit);
+		return;
 	}
+
+	if (main_menu->generate_new_world_btn_state == GUI_BTN_RELEASED) {
+		dltask *next = world_config_appstate_alloc_detached(
+		                 &main_menu->args);
+		dlcontinuation(&main_menu->task, main_menu_entry);
+		dlwait(&main_menu->task, 1);
+		dlnext(next, &main_menu->task);
+		dlasync(next);
+		return;
+	}
+
+	dltail(&main_menu->task, main_menu_loop);
 }
 
 static int
-main_menu_gl_setup(void *_)
+main_menu_gl_setup(void *main_menu)
 {
-	(void) _;
+	(void) main_menu;
 
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
@@ -78,9 +93,9 @@ main_menu_gl_setup(void *_)
 }
 
 static int
-main_menu_gl_frame(void *state_)
+main_menu_gl_frame(void *main_menu_)
 {
-	struct appstate_main_menu *state = state_;
+	struct main_menu_appstate *main_menu = main_menu_;
 
 	if (window_startframe())
 		return 1;
@@ -136,16 +151,16 @@ main_menu_gl_frame(void *state_)
 
 	gui_text_center(title, strlen(title), window.width, title_opts);
 	gui_text_center(subtitle, strlen(subtitle), window.width, subtitle_opts);
-	gui_text_center(state->version_str, strlen(state->version_str),
+	gui_text_center(main_menu->version_str, strlen(main_menu->version_str),
 	                window.width, version_str_opts);
 
-	state->generate_new_world_btn_state = gui_btn(
-		state->generate_new_world_btn_state,
+	main_menu->generate_new_world_btn_state = gui_btn(
+		main_menu->generate_new_world_btn_state,
 		new_world_btn_text, strlen(new_world_btn_text),
 		generate_new_world_btn_opts);
 
-	state->exit_btn_state = gui_btn(
-		state->exit_btn_state,
+	main_menu->exit_btn_state = gui_btn(
+		main_menu->exit_btn_state,
 		exit_btn_text, strlen(exit_btn_text),
 		exit_btn_opts);
 
