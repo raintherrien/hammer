@@ -24,10 +24,10 @@ int write_heightmap(
  * returns errno on error.
  */
 int write_rgb(
-	const char  *filename,
-	const float *img,
-	size_t       width,
-	size_t       height
+	const char *filename,
+	const unsigned char *img,
+	size_t width,
+	size_t height
 );
 
 GLuint load_texture(const char *filename, int *width, int *height);

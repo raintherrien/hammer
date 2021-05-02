@@ -82,10 +82,10 @@ error_creating_png_struct:
 }
 
 int write_rgb(
-	const char  *filename,
-	const float *img,
-	size_t       width,
-	size_t       height
+	const char *filename,
+	const unsigned char *img,
+	size_t width,
+	size_t height
 )
 {
 	uint8_t row[3*width];
@@ -120,9 +120,9 @@ int write_rgb(
 	for (size_t y = 0; y < height; ++ y) {
 		for (size_t x = 0; x < width; ++ x) {
 			size_t i = y * width + x;
-			row[x*3+0] = img[i*3+0] * (uint8_t)-1;
-			row[x*3+1] = img[i*3+1] * (uint8_t)-1;
-			row[x*3+2] = img[i*3+2] * (uint8_t)-1;
+			row[x*3+0] = img[i*3+0];
+			row[x*3+1] = img[i*3+1];
+			row[x*3+2] = img[i*3+2];
 		}
 		png_write_row(png_ptr, (png_const_bytep)row);
 	}

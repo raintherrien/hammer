@@ -1,18 +1,21 @@
 #include "hammer/appstate/world_config.h"
-#include "hammer/appstate/visualize_tectonic.h"
+#include "hammer/appstate/viz_tectonic.h"
 #include "hammer/cli.h"
+#include "hammer/error.h"
 #include "hammer/glthread.h"
 #include "hammer/mem.h"
 #include "hammer/version.h"
 #include "hammer/window.h"
 #include <errno.h>
 #include <limits.h>
+#include <stdio.h>
+#include <time.h>
 
 #define WORLDCONF_NUM_EDIT_BUFFER_LEN 32
 
 struct world_config_appstate {
 	dltask task;
-	struct rtargs args;
+	struct world_opts opts;
 	gui_btn_state next_btn_state;
 	gui_btn_state exit_btn_state;
 	char size_edit_buf[WORLDCONF_NUM_EDIT_BUFFER_LEN];
@@ -26,13 +29,18 @@ static void world_config_exit(DL_TASK_ARGS);
 static int world_config_gl_setup(void *);
 static int world_config_gl_frame(void *);
 
+static unsigned long long random_seed(void);
+
 dltask *
-world_config_appstate_alloc_detached(struct rtargs *args)
+world_config_appstate_alloc_detached(void)
 {
 	struct world_config_appstate *world_config =
 		xmalloc(sizeof(*world_config));
 	world_config->task = DL_TASK_INIT(world_config_entry);
-	world_config->args = *args;
+	world_config->opts = (struct world_opts) {
+		.seed = random_seed(),
+		.size = 1024
+	};
 	return &world_config->task;
 }
 
@@ -43,9 +51,9 @@ world_config_entry(DL_TASK_ARGS)
 
 	glthread_execute(world_config_gl_setup, world_config);
 	snprintf(world_config->size_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN,
-	         "%ld", world_config->args.size);
+	         "%ld", world_config->opts.size);
 	snprintf(world_config->seed_edit_buf, WORLDCONF_NUM_EDIT_BUFFER_LEN,
-	         "%lld", world_config->args.seed);
+	         "%lld", world_config->opts.seed);
 	world_config->next_btn_state = 0;
 	world_config->exit_btn_state = 0;
 
@@ -65,9 +73,9 @@ world_config_loop(DL_TASK_ARGS)
 	}
 
 	if (world_config->next_btn_state == GUI_BTN_RELEASED) {
-		dltask *next = visualize_tectonic_appstate_alloc_detached(
-		                 &world_config->args);
-		dlcontinuation(&world_config->task, world_config_entry);
+		dltask *next = viz_tectonic_appstate_alloc_detached(
+		                 &world_config->opts);
+		dlcontinuation(&world_config->task, world_config_exit);
 		dlwait(&world_config->task, 1);
 		dlnext(next, &world_config->task);
 		dlasync(next);
@@ -246,8 +254,8 @@ world_config_gl_frame(void *world_config_)
 		gui_text_center(err_label, strlen(err_label),
 		                window.width / 2, err_opts);
 	} else {
-		world_config->args.size = parsed_size;
-		world_config->args.seed = parsed_seed;
+		world_config->opts.size = parsed_size;
+		world_config->opts.seed = parsed_seed;
 		world_config->next_btn_state = gui_btn(
 			world_config->next_btn_state,
 			next_btn_text, strlen(next_btn_text),
@@ -262,4 +270,22 @@ world_config_gl_frame(void *world_config_)
 	window_submitframe();
 
 	return 0;
+}
+
+/*
+ * Try to read /dev/urandom, fall back to calling time.
+ */
+static inline unsigned long long
+random_seed(void)
+{
+	FILE *dr = fopen("/dev/urandom", "r");
+	if (dr) {
+		unsigned long long rand;
+		size_t nread = fread(&rand, sizeof(rand), 1, dr);
+		if (fclose(dr))
+			xperror("Error closing /dev/random FILE");
+		if (nread == 1)
+			return rand;
+	}
+	return (unsigned long long)time(NULL);
 }

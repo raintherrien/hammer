@@ -3,8 +3,11 @@
 
 #include <deadlock/dl.h>
 
-struct rtargs;
+struct world_opts {
+	unsigned long long seed;
+	unsigned long      size;
+};
 
-dltask *world_config_appstate_alloc_detached(struct rtargs *);
+dltask *world_config_appstate_alloc_detached(void);
 
 #endif /* HAMMER_APPSTATE_WORLD_CONFIG_H_ */

@@ -11,7 +11,6 @@
 
 struct main_menu_appstate {
 	dltask task;
-	struct rtargs args;
 	gui_btn_state exit_btn_state;
 	gui_btn_state generate_new_world_btn_state;
 	char version_str[VERSION_STR_MAX_LEN];
@@ -25,11 +24,10 @@ static int main_menu_gl_setup(void *);
 static int main_menu_gl_frame(void *);
 
 dltask *
-main_menu_appstate_alloc_detached(struct rtargs *args)
+main_menu_appstate_alloc_detached(void)
 {
 	struct main_menu_appstate *main_menu = xmalloc(sizeof(*main_menu));
 	main_menu->task = DL_TASK_INIT(main_menu_entry);
-	main_menu->args = *args;
 	return &main_menu->task;
 }
 
@@ -70,8 +68,7 @@ main_menu_loop(DL_TASK_ARGS)
 	}
 
 	if (main_menu->generate_new_world_btn_state == GUI_BTN_RELEASED) {
-		dltask *next = world_config_appstate_alloc_detached(
-		                 &main_menu->args);
+		dltask *next = world_config_appstate_alloc_detached();
 		dlcontinuation(&main_menu->task, main_menu_entry);
 		dlwait(&main_menu->task, 1);
 		dlnext(next, &main_menu->task);

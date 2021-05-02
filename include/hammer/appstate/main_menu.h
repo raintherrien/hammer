@@ -3,8 +3,6 @@
 
 #include <deadlock/dl.h>
 
-struct rtargs;
-
-dltask *main_menu_appstate_alloc_detached(struct rtargs *);
+dltask *main_menu_appstate_alloc_detached(void);
 
 #endif /* HAMMER_APPSTATE_MAIN_MENU_H_ */

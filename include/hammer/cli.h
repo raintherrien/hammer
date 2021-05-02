@@ -18,18 +18,6 @@
 
 struct rtargs {
 	/*
-	 * seed is used to seed (get it?) the pseudo-random world
-	 * generation process, and whatever else needs semi-repeatable
-	 * random elements.
-	 */
-	unsigned long long seed;
-
-	/*
-	 * size is the width and length of the world to generate.
-	 */
-	unsigned long size;
-
-	/*
 	 * tc specifies the thread count used by the deadlock scheduler.
 	 * Useful for limiting hammer to only a few cores.
 	 */

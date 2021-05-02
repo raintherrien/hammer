@@ -34,7 +34,8 @@ endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/visualize_tectonic.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/viz_climate.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/viz_tectonic.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/world_config.c
                    ${PROJECT_SOURCE_DIR}/src/gui/img.c
                    ${PROJECT_SOURCE_DIR}/src/gui/interaction.c
@@ -108,11 +109,6 @@ endif()
 option(HAMMER_BUILD_TUNE "Build for this architecture" OFF)
 if(HAMMER_BUILD_TUNE)
 	target_compile_options(hammer PUBLIC -march=native)
-endif()
-
-option(HAMMER_DEBUG_CLIMATE "Output images of climate" OFF)
-if(HAMMER_DEBUG_CLIMATE)
-	target_compile_definitions(hammer PRIVATE HAMMER_DEBUG_CLIMATE)
 endif()
 
 option(HAMMER_DEBUG_OPENGL "Write OpenGL debug information to stderr" OFF)

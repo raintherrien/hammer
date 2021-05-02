@@ -21,8 +21,8 @@ main(int argc, char **argv)
 
 	glthread_create();
 
-	dltask *main_menu_task = main_menu_appstate_alloc_detached(&rtargs);
-	if (dlmain(main_menu_task, NULL, NULL))
+	dltask *main_menu_task = main_menu_appstate_alloc_detached();
+	if (dlmainex(main_menu_task, NULL, NULL, rtargs.tc))
 		xpanic("Error creating deadlock scheduler");
 
 	glthread_destroy();
