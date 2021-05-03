@@ -55,7 +55,7 @@ extern struct window window;
 
 void window_create(void);
 void window_destroy(void);
-int  window_startframe(void);
+void window_startframe(void);
 void window_submitframe(void);
 
 inline static void

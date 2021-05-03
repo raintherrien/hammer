@@ -183,7 +183,7 @@ window_destroy(void)
 	SDL_Quit();
 }
 
-int
+void
 window_startframe(void)
 {
 	size_t new_frame = (++ window.current_frame_id) % FRAMES_IN_FLIGHT;
@@ -284,9 +284,6 @@ window_startframe(void)
 
 	/* 0,0 top left */
 	glm_ortho(0, window.width, window.height, 0, -1000, 1, window.ortho_matrix);
-
-
-	return window.should_close;
 }
 
 void

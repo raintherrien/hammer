@@ -107,8 +107,7 @@ world_config_gl_frame(void *world_config_)
 {
 	struct world_config_appstate *world_config = world_config_;
 
-	if (window_startframe())
-		return 1;
+	window_startframe();
 
 	unsigned font_size = 24;
 	unsigned padding = 32;
@@ -269,7 +268,7 @@ world_config_gl_frame(void *world_config_)
 
 	window_submitframe();
 
-	return 0;
+	return window.should_close;
 }
 
 /*

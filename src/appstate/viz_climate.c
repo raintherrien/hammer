@@ -119,8 +119,7 @@ viz_climate_gl_frame(void *viz_)
 {
 	struct viz_climate_appstate *viz = viz_;
 
-	if (window_startframe())
-		return 1;
+	window_startframe();
 
 	blit_biome_to_image(viz);
 
@@ -245,7 +244,7 @@ viz_climate_gl_frame(void *viz_)
 
 	window_submitframe();
 
-	return 0;
+	return window.should_close;
 }
 
 static void

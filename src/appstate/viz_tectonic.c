@@ -129,8 +129,7 @@ viz_tectonic_gl_frame(void *viz_)
 {
 	struct viz_tectonic_appstate *viz = viz_;
 
-	if (window_startframe())
-		return 1;
+	window_startframe();
 
 	blit_lithosphere_to_image(viz);
 
@@ -199,7 +198,7 @@ viz_tectonic_gl_frame(void *viz_)
 
 	window_submitframe();
 
-	return 0;
+	return window.should_close;
 }
 
 static void

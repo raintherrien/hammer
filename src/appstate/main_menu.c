@@ -94,8 +94,7 @@ main_menu_gl_frame(void *main_menu_)
 {
 	struct main_menu_appstate *main_menu = main_menu_;
 
-	if (window_startframe())
-		return 1;
+	window_startframe();
 
 	const char *title = "Hammer";
 	const char *subtitle = "A collection of bad practices and anti-patterns";
@@ -163,5 +162,5 @@ main_menu_gl_frame(void *main_menu_)
 
 	window_submitframe();
 
-	return 0;
+	return window.should_close;
 }
