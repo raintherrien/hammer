@@ -34,6 +34,19 @@ struct btn_opts {
 	float height;
 };
 
+struct check_opts {
+	uint32_t foreground;
+	uint32_t background;
+	text_style style;
+	float size;
+	float weight;
+	float xoffset;
+	float yoffset;
+	float zoffset;
+	float width;
+	float height;
+};
+
 struct edit_opts {
 	uint32_t foreground;
 	uint32_t background;
@@ -73,6 +86,8 @@ struct text_opts {
                           .yoffset = 0,             \
                           .zoffset = 0
 
+#define CHECK_OPTS_DEFAULTS BTN_OPTS_DEFAULTS
+
 #define EDIT_OPTS_DEFAULTS BTN_OPTS_DEFAULTS
 
 #define RECT_OPTS_DEFAULTS .color = 0x9c9c9cff, \
@@ -91,6 +106,7 @@ struct text_opts {
 gui_btn_state gui_btn(gui_btn_state prior_state,
                       const char *text, size_t len,
                       struct btn_opts);
+int  gui_check(int prior_state, struct check_opts);
 void gui_edit(char *text, size_t maxlen, struct edit_opts);
 void gui_rect(struct rect_opts);
 void gui_text(const char *text, size_t len, struct text_opts);

@@ -143,7 +143,8 @@ viz_tectonic_gl_frame(void *viz_)
 	unsigned btn_height = font_size + 16;
 	unsigned cancel_btn_width = window.width / 2;
 
-	snprintf(viz->progress_str, PROGRESS_STR_MAX_LEN,
+	snprintf(viz->progress_str,
+	         PROGRESS_STR_MAX_LEN,
 	         "Generation: %ld/%ld",
 	         (long)viz->lithosphere.generation,
 	         (long)viz->tectonic_opts.generations *
@@ -160,30 +161,30 @@ viz_tectonic_gl_frame(void *viz_)
 	struct text_opts progress_opts = {
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = padding,
-		.yoffset = window.height - font_size - padding,
+		.yoffset = padding + font_size,
 		.size    = font_size
 	};
 
-	struct btn_opts cancel_btn_opts = {
-		BTN_OPTS_DEFAULTS,
-		.xoffset = window.width - cancel_btn_width - padding,
-		.yoffset = window.height - btn_height - padding,
-		.width   = cancel_btn_width,
-		.height  = btn_height,
-		.size    = font_size
-	};
-
-	float imgy = padding + font_size + 8;
+	float imgy = title_opts.yoffset;
 	float img_height = window.height - imgy - btn_height - padding - 8;
-	float dim = MIN(img_height, window.width - padding * 2);
+	float dim = MIN(img_height, cancel_btn_width);
 
 	struct img_opts tectonic_img_opts = {
 		IMG_OPTS_DEFAULTS,
-		.xoffset = (window.width - dim) / 2,
+		.xoffset = window.width - padding - dim,
 		.yoffset = imgy,
 		.zoffset = 1,
 		.width  = dim,
 		.height = dim
+	};
+
+	struct btn_opts cancel_btn_opts = {
+		BTN_OPTS_DEFAULTS,
+		.xoffset = tectonic_img_opts.xoffset,
+		.yoffset = imgy + dim + padding,
+		.width   = dim,
+		.height  = btn_height,
+		.size    = font_size
 	};
 
 	gui_text(title, strlen(title), title_opts);

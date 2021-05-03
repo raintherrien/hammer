@@ -15,7 +15,7 @@
 
 #define RATE_OF_EVAPORATION   0.25f
 #define RATE_OF_PRECIPITATION 0.003f
-#define RATE_OF_FLOW          0.25f
+#define RATE_OF_FLOW          0.15f
 #define RATE_OF_TEMP_XFER     0.02f
 
 static void advection(struct climate *);

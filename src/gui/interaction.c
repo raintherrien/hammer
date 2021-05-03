@@ -60,6 +60,43 @@ gui_btn(gui_btn_state prior_state,
 	return 0;
 }
 
+int
+gui_check(int prior_state, struct check_opts opts)
+{
+	float half_height = opts.height / 2;
+	float vcenter = opts.yoffset + half_height;
+	gui_rect((struct rect_opts) {
+		RECT_OPTS_DEFAULTS,
+		.color   = opts.background,
+		.xoffset = opts.xoffset,
+		.yoffset = vcenter - half_height,
+		.zoffset = opts.zoffset,
+		.width   = opts.width,
+		.height  = opts.height
+	});
+	if (prior_state) {
+		gui_text_center("X", 1, opts.width, (struct text_opts) {
+			TEXT_OPTS_DEFAULTS,
+			.color   = opts.foreground,
+			.style   = opts.style,
+			.size    = opts.size,
+			.weight  = opts.weight,
+			.xoffset = opts.xoffset,
+			.yoffset = vcenter - opts.size / 2,
+			.zoffset = opts.zoffset + 0.5f
+		});
+	}
+	if (window.mouse_x >= opts.xoffset &&
+	    window.mouse_x < opts.xoffset + opts.width &&
+            window.mouse_y >= opts.yoffset &&
+            window.mouse_y < opts.yoffset + opts.height &&
+            window.mouse_pressed[MOUSEBL])
+	{
+		return !prior_state;
+	}
+	return prior_state;
+}
+
 void
 gui_edit(char *text, size_t maxlen, struct edit_opts opts)
 {
