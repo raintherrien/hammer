@@ -17,7 +17,6 @@
 struct viz_climate_appstate {
 	dltask task;
 	struct world_opts opts;
-	float *uplift;
 	struct climate climate;
 	gui_btn_state cancel_btn_state;
 	int show_biomes;
@@ -43,9 +42,7 @@ viz_climate_appstate_alloc_detached(struct world_opts *opts,
 
 	viz->task = DL_TASK_INIT(viz_climate_entry);
 	viz->opts = *opts;
-	viz->uplift = xmalloc(opts->size * opts->size * sizeof(*viz->uplift));
-	lithosphere_blit(l, viz->uplift, opts->size);
-	climate_create(&viz->climate, viz->uplift, opts->size);
+	climate_create(&viz->climate, l);
 
 	return &viz->task;
 }
@@ -67,7 +64,6 @@ viz_climate_exit(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY(struct viz_climate_appstate, viz, task);
 	climate_destroy(&viz->climate);
-	free(viz->uplift);
 	free(viz);
 }
 
@@ -103,7 +99,7 @@ viz_climate_gl_setup(void *viz_)
 	glBindTexture(GL_TEXTURE_2D, viz->biome_img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_RGB8,
-	                            viz->climate.size, viz->climate.size,
+	                            CLIMATE_LEN, CLIMATE_LEN,
 	                            0, /* border */
 	                            GL_RGB,
 	                            GL_UNSIGNED_BYTE,
@@ -211,13 +207,13 @@ viz_climate_gl_frame(void *viz_)
             window.mouse_y >= biome_img_opts.yoffset &&
             window.mouse_y < biome_img_opts.yoffset + biome_img_opts.height)
         {
-		float s = viz->climate.size / dim;
+		float s = CLIMATE_LEN / dim;
 		size_t imgx = s * (window.mouse_x - biome_img_opts.xoffset);
 		size_t imgy = s * (window.mouse_y - biome_img_opts.yoffset);
-		size_t i = imgy * viz->climate.size + imgx;
+		size_t i = imgy * CLIMATE_LEN + imgx;
 		float temp = 1 - viz->climate.inv_temp[i];
 		float precip = viz->climate.precipitation[i];
-		if (viz->uplift[i] < TECTONIC_CONTINENT_MASS)
+		if (viz->climate.uplift[i] < TECTONIC_CONTINENT_MASS)
 			precip = -1;
 		enum biome b = biome_classification(temp, precip);
 		snprintf(viz->biome_tooltip_str,
@@ -255,24 +251,23 @@ viz_climate_gl_frame(void *viz_)
 static void
 blit_biome_to_image(struct viz_climate_appstate *viz)
 {
-	GLubyte *img = xmalloc(viz->climate.size * viz->climate.size * sizeof(*img) * 3);
+	GLubyte *img = xmalloc(CLIMATE_AREA * sizeof(*img) * 3);
 	/* Blue below sealevel, green to white continent altitude */
-	const size_t area = viz->climate.size * viz->climate.size;
 	if (viz->show_biomes) {
-		for (size_t i = 0; i < area; ++ i) {
+		for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
 			float temp = 1 - viz->climate.inv_temp[i];
 			float precip = viz->climate.precipitation[i];
-			if (viz->uplift[i] < TECTONIC_CONTINENT_MASS)
+			if (viz->climate.uplift[i] < TECTONIC_CONTINENT_MASS)
 				precip = -1;
 			enum biome b = biome_classification(temp, precip);
 			memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
 		}
 	} else {
-		for (size_t i = 0; i < area; ++ i) {
+		for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
 			float temperature = 1 - viz->climate.inv_temp[i];
 			float freezegrad = 1 - CLAMP(2 * (temperature - CLIMATE_ARCTIC_MAX_TEMP), 0, 1);
-			if (viz->uplift[i] > TECTONIC_CONTINENT_MASS) {
-				float h = viz->uplift[i] - TECTONIC_CONTINENT_MASS;
+			if (viz->climate.uplift[i] > TECTONIC_CONTINENT_MASS) {
+				float h = viz->climate.uplift[i] - TECTONIC_CONTINENT_MASS;
 				img[i*3+0] = 148 - 70 * MIN(1,viz->climate.precipitation[i]);
 				img[i*3+1] = 148 - 20 * h;
 				img[i*3+2] = 77;
@@ -281,7 +276,7 @@ blit_biome_to_image(struct viz_climate_appstate *viz)
 				img[i*3+2] += (255 - img[i*3+2]) * freezegrad;
 			} else {
 				float temprg = (150-50) * freezegrad;
-				float elevgrad = 100 * viz->uplift[i] / TECTONIC_CONTINENT_MASS;
+				float elevgrad = 100 * viz->climate.uplift[i] / TECTONIC_CONTINENT_MASS;
 				img[i*3+0] = 50 + temprg;
 				img[i*3+1] = 50 + MAX(temprg,elevgrad);
 				img[i*3+2] = 168 + (255-168) * freezegrad;
@@ -291,7 +286,7 @@ blit_biome_to_image(struct viz_climate_appstate *viz)
 	glTextureSubImage2D(viz->biome_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
-	                    viz->climate.size, viz->climate.size, /* w,h */
+	                    CLIMATE_LEN, CLIMATE_LEN, /* w,h */
 	                    GL_RGB, GL_UNSIGNED_BYTE,
 	                    img);
 	free(img);

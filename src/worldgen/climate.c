@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 /*
  * TODO: Document
@@ -32,31 +33,24 @@ wrap(long long x, unsigned long size)
 }
 
 void
-climate_create(struct climate *c, const float *uplift, unsigned long size)
+climate_create(struct climate *c, struct lithosphere *l)
 {
-	*c = (struct climate){
-		.uplift        = uplift,
-		.moisture      = xcalloc(size * size, sizeof(float)),
-		.precipitation = xcalloc(size * size, sizeof(float)),
-		.inv_temp_init = xcalloc(size * size, sizeof(float)),
-		.inv_temp      = xcalloc(size * size, sizeof(float)),
-		.inv_temp_flow = xcalloc(size * size * 4, sizeof(float)),
-		.wind_velocity = xcalloc(size * size * 2, sizeof(float)),
-		.size = size,
-		.generation = 0
-	};
+	memset(c->uplift, 0, CLIMATE_AREA * sizeof(float)),
+	memset(c->moisture, 0, CLIMATE_AREA * sizeof(float)),
+	memset(c->precipitation, 0, CLIMATE_AREA * sizeof(float)),
+	memset(c->inv_temp_init, 0, CLIMATE_AREA * sizeof(float)),
+	memset(c->inv_temp, 0, CLIMATE_AREA * sizeof(float)),
+	memset(c->inv_temp_flow, 0, CLIMATE_AREA * 4 * sizeof(float)),
+	memset(c->wind_velocity, 0, CLIMATE_AREA * 2 * sizeof(float)),
+	c->generation = 0;
+	lithosphere_blit(l, c->uplift, CLIMATE_LEN);
 	temperature_init(c);
 }
 
 void
 climate_destroy(struct climate *c)
 {
-	free(c->moisture);
-	free(c->precipitation);
-	free(c->inv_temp_init);
-	free(c->inv_temp);
-	free(c->inv_temp_flow);
-	free(c->wind_velocity);
+	(void) c;
 }
 
 void
@@ -70,16 +64,16 @@ climate_update(struct climate *c)
 }
 
 static float
-lerp(struct climate *c, float x, float y, const float *map)
+lerp(float x, float y, const float *map)
 {
 	float fx = floorf(x);
 	float fy = floorf(y);
 	float cx = ceilf(x);
 	float cy = ceilf(y);
-	float m00 = map[wrap(fy, c->size) * c->size + wrap(fx, c->size)];
-	float m10 = map[wrap(fy, c->size) * c->size + wrap(cx, c->size)];
-	float m01 = map[wrap(cy, c->size) * c->size + wrap(fx, c->size)];
-	float m11 = map[wrap(cy, c->size) * c->size + wrap(cx, c->size)];
+	float m00 = map[wrap(fy, CLIMATE_LEN) * CLIMATE_LEN + wrap(fx, CLIMATE_LEN)];
+	float m10 = map[wrap(fy, CLIMATE_LEN) * CLIMATE_LEN + wrap(cx, CLIMATE_LEN)];
+	float m01 = map[wrap(cy, CLIMATE_LEN) * CLIMATE_LEN + wrap(fx, CLIMATE_LEN)];
+	float m11 = map[wrap(cy, CLIMATE_LEN) * CLIMATE_LEN + wrap(cx, CLIMATE_LEN)];
 	float m0 = m00 + (m10 - m00) * (x - fx);
 	float m1 = m01 + (m11 - m01) * (x - fx);
 	return m0 + (m1 - m0) * (y - fy);
@@ -89,15 +83,15 @@ static void
 advection(struct climate *c)
 {
 	/* Note: Uses wind_velocity as scratch */
-	for (size_t y = 0; y < c->size; ++ y)
-	for (size_t x = 0; x < c->size; ++ x) {
-		size_t i = y * c->size + x;
+	for (size_t y = 0; y < CLIMATE_LEN; ++ y)
+	for (size_t x = 0; x < CLIMATE_LEN; ++ x) {
+		size_t i = y * CLIMATE_LEN + x;
 		float u = x - (1/RATE_OF_FLOW)*c->wind_velocity[i*2+0];
 		float v = y - (1/RATE_OF_FLOW)*c->wind_velocity[i*2+1];
-		c->wind_velocity[i*2+0] = lerp(c, u, v, c->moisture);
+		c->wind_velocity[i*2+0] = lerp(u, v, c->moisture);
 	}
 
-	for (size_t i = 0; i < c->size * c->size; ++ i)
+	for (size_t i = 0; i < CLIMATE_AREA; ++ i)
 		c->moisture[i] = c->wind_velocity[i*2+0];
 }
 
@@ -105,16 +99,16 @@ static void
 equalize_temperature(struct climate *c)
 {
 	/* Calculate outflow */
-	for (size_t y = 0; y < c->size; ++ y)
-	for (size_t x = 0; x < c->size; ++ x) {
-		float trade_wind_bias = cosf(M_PI * (2.0f * y / c->size - 1));
-		size_t i = y * c->size + x;
+	for (size_t y = 0; y < CLIMATE_LEN; ++ y)
+	for (size_t x = 0; x < CLIMATE_LEN; ++ x) {
+		float trade_wind_bias = cosf(M_PI * (2.0f * y / CLIMATE_LEN - 1));
+		size_t i = y * CLIMATE_LEN + x;
 		float t = c->inv_temp[i];
 		float d[4] = {
-			t - c->inv_temp[y * c->size + wrap((long long)x-1, c->size)],
-			t - c->inv_temp[y * c->size + wrap((long long)x+1, c->size)],
-			t - c->inv_temp[wrap((long long)y-1, c->size) * c->size + x],
-			t - c->inv_temp[wrap((long long)y+1, c->size) * c->size + x]
+			t - c->inv_temp[y * CLIMATE_LEN + wrap((long long)x-1, CLIMATE_LEN)],
+			t - c->inv_temp[y * CLIMATE_LEN + wrap((long long)x+1, CLIMATE_LEN)],
+			t - c->inv_temp[wrap((long long)y-1, CLIMATE_LEN) * CLIMATE_LEN + x],
+			t - c->inv_temp[wrap((long long)y+1, CLIMATE_LEN) * CLIMATE_LEN + x]
 		};
 		float *out = c->inv_temp_flow + i*4;
 		float outflow = 0;
@@ -137,16 +131,16 @@ equalize_temperature(struct climate *c)
 	}
 
 	/* Perform flow, velocity */
-	for (size_t y = 0; y < c->size; ++ y)
-	for (size_t x = 0; x < c->size; ++ x) {
-		size_t i = y * c->size + x;
+	for (size_t y = 0; y < CLIMATE_LEN; ++ y)
+	for (size_t x = 0; x < CLIMATE_LEN; ++ x) {
+		size_t i = y * CLIMATE_LEN + x;
 		float *out = c->inv_temp_flow + i*4;
 		c->inv_temp[i] -= out[0] + out[1] + out[2] + out[3];
 		size_t n[4] = {
-			y * c->size + wrap((long long)x-1, c->size),
-			y * c->size + wrap((long long)x+1, c->size),
-			wrap((long long)y-1, c->size) * c->size + x,
-			wrap((long long)y+1, c->size) * c->size + x
+			y * CLIMATE_LEN + wrap((long long)x-1, CLIMATE_LEN),
+			y * CLIMATE_LEN + wrap((long long)x+1, CLIMATE_LEN),
+			wrap((long long)y-1, CLIMATE_LEN) * CLIMATE_LEN + x,
+			wrap((long long)y+1, CLIMATE_LEN) * CLIMATE_LEN + x
 		};
 		for (size_t a = 0; a < 4; ++ a)
 			c->inv_temp[n[a]] += out[a];
@@ -171,9 +165,9 @@ latitude_temperature(float latitude)
 static void
 precipitation(struct climate *c)
 {
-	for (size_t y = 0; y < c->size; ++ y)
-	for (size_t x = 0; x < c->size; ++ x) {
-		size_t i = y * c->size + x;
+	for (size_t y = 0; y < CLIMATE_LEN; ++ y)
+	for (size_t x = 0; x < CLIMATE_LEN; ++ x) {
+		size_t i = y * CLIMATE_LEN + x;
 		/* Either evaporate over water or precipitate over land */
 		if (c->uplift[i] < TECTONIC_CONTINENT_MASS) {
 			c->moisture[i] += RATE_OF_EVAPORATION * (1 - c->inv_temp[i]);
@@ -191,10 +185,10 @@ static void
 temperature_init(struct climate *c)
 {
 	/* Calculate temperature from latitude and altitude */
-	for (size_t y = 0; y < c->size; ++ y)
-	for (size_t x = 0; x < c->size; ++ x) {
-		size_t i = y * c->size + x;
-		float temp = latitude_temperature(2.0f * y / c->size - 1);
+	for (size_t y = 0; y < CLIMATE_LEN; ++ y)
+	for (size_t x = 0; x < CLIMATE_LEN; ++ x) {
+		size_t i = y * CLIMATE_LEN + x;
+		float temp = latitude_temperature(2.0f * y / CLIMATE_LEN - 1);
 		float h = c->uplift[i] - TECTONIC_CONTINENT_MASS;
 		if (h < 0)
 			temp *= 1 - (h*h);
@@ -204,37 +198,37 @@ temperature_init(struct climate *c)
 		c->inv_temp_init[i] = 1 - temp;
 	}
 
-	const int gkl = 16 * MAX(c->size / 1024, 1);
+	const int gkl = 16 * MAX(CLIMATE_LEN / 1024, 1);
 	const int gksz = 2*gkl+1;
 	float gk[gksz];
 	GAUSSIANK(gk, gksz);
-	float *blur_line = xmalloc(c->size * 2 * sizeof(*blur_line));
+	float *blur_line = xmalloc(CLIMATE_LEN * 2 * sizeof(*blur_line));
 
 	/* Blur temperature */
-	for (size_t y = 0; y < c->size; ++ y) {
-		for (size_t x = 0; x < c->size; ++ x) {
+	for (size_t y = 0; y < CLIMATE_LEN; ++ y) {
+		for (size_t x = 0; x < CLIMATE_LEN; ++ x) {
 			blur_line[x] = 0;
 			for (int g = 0; g < gksz; ++ g) {
-				size_t i = y * c->size + wrap((long long)x+g-gkl, c->size);
+				size_t i = y * CLIMATE_LEN + wrap((long long)x+g-gkl, CLIMATE_LEN);
 				blur_line[x] += gk[g] * c->inv_temp_init[i];
 			}
 		}
-		for (size_t x = 0; x < c->size; ++ x)
-			c->inv_temp_init[y * c->size + x] = blur_line[x];
+		for (size_t x = 0; x < CLIMATE_LEN; ++ x)
+			c->inv_temp_init[y * CLIMATE_LEN + x] = blur_line[x];
 	}
-	for (size_t x = 0; x < c->size; ++ x) {
-		for (size_t y = 0; y < c->size; ++ y) {
+	for (size_t x = 0; x < CLIMATE_LEN; ++ x) {
+		for (size_t y = 0; y < CLIMATE_LEN; ++ y) {
 			blur_line[y] = 0;
 			for (int g = 0; g < gksz; ++ g) {
-				size_t i = wrap((long long)y+g-gkl, c->size) * c->size + x;
+				size_t i = wrap((long long)y+g-gkl, CLIMATE_LEN) * CLIMATE_LEN + x;
 				blur_line[y] += gk[g] * c->inv_temp_init[i];
 			}
 		}
-		for (size_t y = 0; y < c->size; ++ y)
-			c->inv_temp_init[y * c->size + x] = blur_line[y];
+		for (size_t y = 0; y < CLIMATE_LEN; ++ y)
+			c->inv_temp_init[y * CLIMATE_LEN + x] = blur_line[y];
 	}
 
-	for (size_t i = 0; i < c->size * c->size; ++ i) {
+	for (size_t i = 0; i < CLIMATE_LEN * CLIMATE_LEN; ++ i) {
 		c->inv_temp[i] = c->inv_temp_init[i];
 	}
 
@@ -245,7 +239,7 @@ static void
 temperature_update(struct climate *c)
 {
 	/* Lose temperature at altitude, latitude */
-	for (size_t i = 0; i < c->size * c->size; ++ i) {
+	for (size_t i = 0; i < CLIMATE_LEN * CLIMATE_LEN; ++ i) {
 		if (c->inv_temp_init[i] > c->inv_temp[i]) {
 			c->inv_temp[i] += (c->inv_temp_init[i] -
 			                   c->inv_temp[i]) * RATE_OF_TEMP_XFER;

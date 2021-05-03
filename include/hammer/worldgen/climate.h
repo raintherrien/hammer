@@ -1,29 +1,32 @@
 #ifndef HAMMER_WORLDGEN_CLIMATE_H_
 #define HAMMER_WORLDGEN_CLIMATE_H_
 
+/* Climate map dimensions (same as lithosphere) */
+#define CLIMATE_LEN 1024
+#define CLIMATE_AREA (CLIMATE_LEN * CLIMATE_LEN)
+
 #define CLIMATE_GENERATIONS 250
 #define CLIMATE_ARCTIC_MAX_TEMP 0.15f
 #define CLIMATE_SUBARCTIC_MAX_TEMP 0.40f
 #define CLIMATE_TEMPERATE_MAX_TEMP 0.65f
 
+struct lithosphere;
+
 /*
  * TODO: Document
  */
 struct climate {
-	/* Non-owning */
-	const float * restrict uplift;
-	/* Following allocated by climate_create, freed by climate_destroy */
-	float * restrict moisture;
-	float * restrict precipitation;
-	float * restrict inv_temp_init;
-	float * restrict inv_temp;
-	float * restrict inv_temp_flow; /* Array of float[4] vectors. */
-	float * restrict wind_velocity; /* Array of float[2] vectors. */
-	unsigned long size;
+	float uplift       [CLIMATE_AREA];
+	float moisture     [CLIMATE_AREA];
+	float precipitation[CLIMATE_AREA];
+	float inv_temp_init[CLIMATE_AREA];
+	float inv_temp     [CLIMATE_AREA];
+	float inv_temp_flow[CLIMATE_AREA * 4];
+	float wind_velocity[CLIMATE_AREA * 2];
 	unsigned long generation;
 };
 
-void climate_create(struct climate *, const float *uplift, unsigned long size);
+void climate_create(struct climate *, struct lithosphere *);
 void climate_destroy(struct climate *);
 void climate_update(struct climate *);
 
