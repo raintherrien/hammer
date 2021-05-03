@@ -52,7 +52,6 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/salloc.c
                    ${PROJECT_SOURCE_DIR}/src/main.c
-                   ${PROJECT_SOURCE_DIR}/src/mem.c
                    ${PROJECT_SOURCE_DIR}/src/poisson.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
