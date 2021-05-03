@@ -16,14 +16,15 @@ main(int argc, char **argv)
 	case 0:             break;
 	case HAMMER_E_EXIT: return EXIT_SUCCESS;
 	default:
-		xpanic("Error parsing command line arguments");
+		xperror("Error parsing command line arguments");
+		return EXIT_FAILURE;
 	}
 
 	glthread_create();
 
 	dltask *main_menu_task = main_menu_appstate_alloc_detached();
 	if (dlmainex(main_menu_task, NULL, NULL, rtargs.tc))
-		xpanic("Error creating deadlock scheduler");
+		xperror("Error creating deadlock scheduler");
 
 	glthread_destroy();
 

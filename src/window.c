@@ -197,7 +197,7 @@ window_startframe(void)
 					  GL_SYNC_FLUSH_COMMANDS_BIT,
 					  (GLuint64)-1);
 		if (status == GL_WAIT_FAILED)
-			xpanic("Error waiting on frame fence");
+			xperror("Error waiting on frame fence");
 	}
 	glDeleteSync(recycling_fence);
 	window.current_frame->fence = 0;
