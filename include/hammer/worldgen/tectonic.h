@@ -9,7 +9,8 @@
 /* Any mass equal to or higher than continent mass is above sea level */
 #define TECTONIC_CONTINENT_MASS   1.0f
 /* Lithosphere dimensions */
-#define LITHOSPHERE_LEN 1024
+#define LITHOSPHERE_SCALE 10
+#define LITHOSPHERE_LEN  (1<<LITHOSPHERE_SCALE)
 #define LITHOSPHERE_AREA (LITHOSPHERE_LEN * LITHOSPHERE_LEN)
 
 struct tectonic_opts {

@@ -2,7 +2,8 @@
 #define HAMMER_WORLDGEN_CLIMATE_H_
 
 /* Climate map dimensions (same as lithosphere) */
-#define CLIMATE_LEN 1024
+#define CLIMATE_SCALE 10
+#define CLIMATE_LEN (1<<CLIMATE_SCALE)
 #define CLIMATE_AREA (CLIMATE_LEN * CLIMATE_LEN)
 
 #define CLIMATE_GENERATIONS 250

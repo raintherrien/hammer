@@ -5,7 +5,7 @@
 
 struct world_opts {
 	unsigned long long seed;
-	unsigned long      size;
+	unsigned scale;
 };
 
 dltask *world_config_appstate_alloc_detached(void);

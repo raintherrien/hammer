@@ -67,6 +67,7 @@ struct stream_graph {
 	struct stream_tree *trees; /* vector */
 	uint32_t            node_count;
 	unsigned            generation;
+	unsigned            size;
 };
 
 void stream_graph_create(struct stream_graph *,

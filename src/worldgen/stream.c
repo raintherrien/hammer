@@ -99,6 +99,7 @@ stream_graph_create(struct stream_graph *g,
 	g->tris  = NULL;
 	g->trees = NULL;
 	g->generation = 0;
+	g->size = size;
 
 	/* Create stream nodes (only center domain obviously) */
 	for (uint32_t i = 0; i < g->node_count; ++ i) {
@@ -200,7 +201,19 @@ stream_graph_update(struct stream_graph *g)
 			dst = e->a;
 		}
 
-		g->arcs[src].receiver = dst;
+		/*
+		 * If this node has no receiver, assign dst as receiver.
+		 * Otherwise, determine which potential receiver is lower and
+		 * choose that receiver
+		 */
+		if (g->arcs[src].receiver == NO_NODE) {
+			g->arcs[src].receiver = dst;
+			continue;
+		}
+		struct stream_node *dstn = &g->nodes[dst];
+		struct stream_node *rcvn = &g->nodes[g->arcs[src].receiver];
+		if (rcvn->height > dstn->height)
+			g->arcs[src].receiver = dst;
 	}
 
 	/* Travel down to root to determine or create tree, identify lakes */
@@ -295,7 +308,7 @@ stream_graph_update(struct stream_graph *g)
 		float d = src->height - dst->height;
 		const float talus = 0.2f;
 		if (d > talus) {
-			float xfer = d - talus;
+			float xfer = (d - talus) / 2;
 			dst->height += xfer;
 			src->height -= xfer;
 		}
@@ -373,7 +386,13 @@ static void
 flow_drainage_area(struct stream_graph *g, uint32_t ni)
 {
 	do {
-		g->nodes[ni].drainage += POISSON_AREA;
+		struct stream_node *n = &g->nodes[ni];
+		/* Reduce drainage below ocean level */
+		if (n->height >= TECTONIC_CONTINENT_MASS)
+			n->drainage += POISSON_AREA;
+		else
+			n->drainage += POISSON_AREA *
+			               (n->height / TECTONIC_CONTINENT_MASS);
 		ni = g->arcs[ni].receiver;
 	} while (ni != NO_NODE);
 }

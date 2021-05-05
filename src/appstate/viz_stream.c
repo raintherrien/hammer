@@ -16,7 +16,7 @@
 struct viz_stream_appstate {
 	dltask task;
 	struct world_opts opts;
-	struct stream_graph stream_graph;
+	struct stream_graph stream;
 	gui_btn_state cancel_btn_state;
 	int show_streams;
 	GLuint img;
@@ -43,7 +43,8 @@ viz_stream_appstate_alloc_detached(const struct world_opts *opts,
 
 	viz->task = DL_TASK_INIT(viz_stream_entry);
 	viz->opts = *opts;
-	stream_graph_create(&viz->stream_graph, c, opts->seed, opts->size);
+	stream_graph_create(&viz->stream, c, opts->seed,
+	                    1 << (9 + opts->scale));
 
 	return &viz->task;
 }
@@ -64,7 +65,7 @@ static void
 viz_stream_exit(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY(struct viz_stream_appstate, viz, task);
-	stream_graph_destroy(&viz->stream_graph);
+	stream_graph_destroy(&viz->stream);
 	free(viz);
 }
 
@@ -80,10 +81,10 @@ viz_stream_loop(DL_TASK_ARGS)
 		return;
 	}
 
-	if (viz->stream_graph.generation < STREAM_GRAPH_GENERATIONS) {
+	if (viz->stream.generation < STREAM_GRAPH_GENERATIONS) {
 		/* Rendering is SUPER expensive, relative to generating */
 		for (int i = 0; i < 10; ++ i)
-			stream_graph_update(&viz->stream_graph);
+			stream_graph_update(&viz->stream);
 	} else {
 		/* XXX Next step */
 	}
@@ -102,7 +103,7 @@ viz_stream_gl_setup(void *viz_)
 	glBindTexture(GL_TEXTURE_2D, viz->img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_RGB8,
-	                            viz->opts.size, viz->opts.size,
+	                            viz->stream.size, viz->stream.size,
 	                            0, /* border */
 	                            GL_RGB,
 	                            GL_UNSIGNED_BYTE,
@@ -140,7 +141,7 @@ viz_stream_gl_frame(void *viz_)
 	snprintf(viz->progress_str,
 	         PROGRESS_STR_MAX_LEN,
 	         "Generation: %ld/%ld",
-	         (long)viz->stream_graph.generation,
+	         (long)viz->stream.generation,
 	         (long)STREAM_GRAPH_GENERATIONS);
 
 	struct text_opts title_opts = {
@@ -268,7 +269,7 @@ node_color(struct stream_node *n, float rgb[3], float w)
 	if (n->height > TECTONIC_CONTINENT_MASS) {
 		float h = n->height - TECTONIC_CONTINENT_MASS;
 		rgb[0] += w * 148;
-		rgb[1] += w * (148 - 20 * h);
+		rgb[1] += w * MAX(0, 148 - 25 * h);
 		rgb[2] += w * 77;
 	} else {
 		rgb[0] += w * 50;
@@ -305,16 +306,16 @@ swizzle(uint32_t i, GLubyte *rgb)
 static void
 blit_to_image(struct viz_stream_appstate *viz)
 {
-	size_t area = viz->opts.size * viz->opts.size;
+	size_t area = viz->stream.size * viz->stream.size;
 	GLubyte *img = xcalloc(area * 3, sizeof(*img));
 
-	size_t tri_count = vector_size(viz->stream_graph.tris);
+	size_t tri_count = vector_size(viz->stream.tris);
 	for (size_t ti = 0; ti < tri_count; ++ ti) {
-		struct stream_tri *tri = &viz->stream_graph.tris[ti];
+		struct stream_tri *tri = &viz->stream.tris[ti];
 		struct stream_node *n[3] = {
-			&viz->stream_graph.nodes[tri->a],
-			&viz->stream_graph.nodes[tri->b],
-			&viz->stream_graph.nodes[tri->c]
+			&viz->stream.nodes[tri->a],
+			&viz->stream.nodes[tri->b],
+			&viz->stream.nodes[tri->c]
 		};
 		long l = floorf(MIN(n[0]->x, MIN(n[1]->x, n[2]->x)));
 		long r =  ceilf(MAX(n[0]->x, MAX(n[1]->x, n[2]->x)));
@@ -329,9 +330,9 @@ blit_to_image(struct viz_stream_appstate *viz)
 			if (w[0] < 0 || w[1] < 0 || w[2] < 0)
 				continue;
 			/* fast wrap since size is power of two */
-			long wx = (x + viz->opts.size) & (viz->opts.size - 1);
-			long wy = (y + viz->opts.size) & (viz->opts.size - 1);
-			size_t i = wy * viz->opts.size + wx;
+			long wx = (x + viz->stream.size) & (viz->stream.size - 1);
+			long wy = (y + viz->stream.size) & (viz->stream.size - 1);
+			size_t i = wy * viz->stream.size + wx;
 			float c[3] = { 0, 0, 0 };
 			node_color(n[0], c, w[0]);
 			node_color(n[1], c, w[1]);
@@ -343,12 +344,12 @@ blit_to_image(struct viz_stream_appstate *viz)
 	}
 
 	if (viz->show_streams) {
-		for (size_t i = 0; i < viz->stream_graph.node_count; ++ i) {
-			struct stream_arc *arc = &viz->stream_graph.arcs[i];
-			if (arc->receiver >= viz->stream_graph.node_count)
+		for (size_t i = 0; i < viz->stream.node_count; ++ i) {
+			struct stream_arc *arc = &viz->stream.arcs[i];
+			if (arc->receiver >= viz->stream.node_count)
 				continue;
-			struct stream_node *src = &viz->stream_graph.nodes[i];
-			struct stream_node *dst = &viz->stream_graph.nodes[arc->receiver];
+			struct stream_node *src = &viz->stream.nodes[i];
+			struct stream_node *dst = &viz->stream.nodes[arc->receiver];
 			float srcx = src->x;
 			float srcy = src->y;
 			float dstx = dst->x;
@@ -356,19 +357,19 @@ blit_to_image(struct viz_stream_appstate *viz)
 			float deltax = fabsf(srcx - dstx);
 			float deltay = fabsf(srcy - dsty);
 			/* Wrapping hack to keep lines from crossing image */
-			int wrapx = deltax > (float)viz->opts.size - deltax;
-			int wrapy = deltay > (float)viz->opts.size - deltay;
+			int wrapx = deltax > (float)viz->stream.size - deltax;
+			int wrapy = deltay > (float)viz->stream.size - deltay;
 			if (wrapx && dstx > srcx)
-				srcx += viz->opts.size;
+				srcx += viz->stream.size;
 			else if (wrapx && dstx < srcx)
-				dstx += viz->opts.size;
+				dstx += viz->stream.size;
 			if (wrapy && dsty > srcy)
-				srcy += viz->opts.size;
+				srcy += viz->stream.size;
 			else if (wrapy && dsty < srcy)
-				dsty += viz->opts.size;
+				dsty += viz->stream.size;
 			GLubyte c[3];
 			swizzle(src->tree, c);
-			putline(img, viz->opts.size,
+			putline(img, viz->stream.size,
 			        c[0], c[1], c[2],
 			        srcx, srcy,
 			        dstx, dsty);
@@ -376,15 +377,17 @@ blit_to_image(struct viz_stream_appstate *viz)
 	}
 
 	/* XXX Debug
-	char filename[64];
-	snprintf(filename, 64, "stream%03d.png", viz->stream_graph.generation);
-	write_rgb(filename, img, viz->opts.size, viz->opts.size);
+	if (viz->stream.generation == 100) {
+		char filename[64];
+		snprintf(filename, 64, "stream%03d.png", viz->stream.generation);
+		write_rgb(filename, img, viz->stream.size, viz->stream.size);
+	}
 	*/
 
 	glTextureSubImage2D(viz->img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
-	                    viz->opts.size, viz->opts.size, /* w,h */
+	                    viz->stream.size, viz->stream.size, /* w,h */
 	                    GL_RGB, GL_UNSIGNED_BYTE,
 	                    img);
 	free(img);
