@@ -38,7 +38,7 @@ print_version(void)
 }
 
 /* Return the number of system threads; TODO: Currently POSIX bound */
-static inline unsigned int
+static unsigned int
 system_threads(void)
 {
 #ifdef _WIN32

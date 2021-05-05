@@ -7,7 +7,7 @@
  * http://lomont.org/papers/2008/Lomont_PRNG_2008.pdf
  */
 
-static inline uint32_t
+static uint32_t
 WELL512i_impl(uint32_t * restrict i, uint32_t s[restrict WELL512SZ])
 {
 	uint32_t a, b, c, d;

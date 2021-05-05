@@ -39,7 +39,7 @@ world_config_appstate_alloc_detached(void)
 	world_config->task = DL_TASK_INIT(world_config_entry);
 	world_config->opts = (struct world_opts) {
 		.seed = random_seed(),
-		.size = 1024
+		.size = 4096
 	};
 	return &world_config->task;
 }
@@ -117,8 +117,10 @@ world_config_gl_frame(void *world_config_)
 	const char *exit_btn_text = "Exit";
 	const char *size_label = "World Size:";
 	const char *seed_label = "Seed:";
-	const char *size_err_label = "Invalid world size";
-	const char *seed_err_label = "Invalid world seed";
+	const char *size_err_num_label = "Must be a number";
+	const char *size_err_pow_label = "Must be power of 2";
+	const char *size_err_min_label = "Must be >= 1024";
+	const char *seed_err_label = "World seed must be a number";
 	const char *err_label = "Fix errors above to continue";
 
 	unsigned btn_height = font_size + 16;
@@ -242,7 +244,13 @@ world_config_gl_frame(void *world_config_)
 	}
 
 	if (parsed_size == ULONG_MAX) {
-		gui_text(size_err_label, strlen(size_err_label), size_err_opts);
+		gui_text(size_err_num_label, strlen(size_err_num_label), size_err_opts);
+	} else if (parsed_size < 1024) {
+		gui_text(size_err_min_label, strlen(size_err_min_label), size_err_opts);
+		parsed_size = ULONG_MAX;
+	} else if (parsed_size & (parsed_size - 1)) {
+		gui_text(size_err_pow_label, strlen(size_err_pow_label), size_err_opts);
+		parsed_size = ULONG_MAX;
 	}
 
 	if (parsed_seed == ULLONG_MAX) {
@@ -274,7 +282,7 @@ world_config_gl_frame(void *world_config_)
 /*
  * Try to read /dev/urandom, fall back to calling time.
  */
-static inline unsigned long long
+static unsigned long long
 random_seed(void)
 {
 	FILE *dr = fopen("/dev/urandom", "r");

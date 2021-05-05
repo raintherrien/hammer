@@ -153,6 +153,7 @@ viz_tectonic_gl_frame(void *viz_)
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = padding,
 		.yoffset = padding,
+		.zoffset = 1,
 		.size    = font_size,
 		.weight  = 255
 	};
@@ -161,6 +162,7 @@ viz_tectonic_gl_frame(void *viz_)
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = padding,
 		.yoffset = padding + font_size,
+		.zoffset = 1,
 		.size    = font_size
 	};
 
@@ -172,7 +174,7 @@ viz_tectonic_gl_frame(void *viz_)
 		IMG_OPTS_DEFAULTS,
 		.xoffset = window.width - padding - dim,
 		.yoffset = imgy,
-		.zoffset = 1,
+		.zoffset = 0,
 		.width  = dim,
 		.height = dim
 	};
@@ -206,7 +208,7 @@ blit_lithosphere_to_image(struct viz_tectonic_appstate *viz)
 {
 	struct lithosphere *l = &viz->lithosphere;
 	GLubyte *img = xmalloc(LITHOSPHERE_AREA * sizeof(*img) * 3);
-	/* Blue below sealevel, green to white continent altitude */
+	/* Blue below sealevel, green to red continent altitude */
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
 		if (l->mass[i] > TECTONIC_CONTINENT_MASS) {
 			float h = l->mass[i] - TECTONIC_CONTINENT_MASS;
@@ -219,23 +221,6 @@ blit_lithosphere_to_image(struct viz_tectonic_appstate *viz)
 			img[i*3+2] = 168;
 		}
 	}
-	/* Outline plates
-	for (uint32_t y = 0; y < LITHOSPHERE_LEN; ++ y)
-	for (uint32_t x = 0; x < LITHOSPHERE_LEN; ++ x) {
-		size_t i  = y * LITHOSPHERE_LEN + x;
-		size_t xm = y * LITHOSPHERE_LEN + wrap((long)x-1);
-		size_t xp = y * LITHOSPHERE_LEN + wrap((long)x+1);
-		size_t ym = wrap((long)y-1) * LITHOSPHERE_LEN + x;
-		size_t yp = wrap((long)y+1) * LITHOSPHERE_LEN + x;
-		if (l->owner[i] != (l->owner[xm] & l->owner[xp] &
-				    l->owner[ym] & l->owner[yp]))
-		{
-			img[i*3+0] = 255;
-			img[i*3+1] = 0;
-			img[i*3+2] = 0;
-		}
-	}
-	*/
 	glTextureSubImage2D(viz->tectonic_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */

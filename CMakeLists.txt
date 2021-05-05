@@ -35,6 +35,7 @@ add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMME
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/viz_climate.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/viz_stream.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/viz_tectonic.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/world_config.c
                    ${PROJECT_SOURCE_DIR}/src/gui/img.c
@@ -42,7 +43,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/gui/rect.c
                    ${PROJECT_SOURCE_DIR}/src/gui/text.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/large_scale_world_gen.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/stream.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
                    ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/error.c

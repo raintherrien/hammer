@@ -26,12 +26,6 @@ static void precipitation(struct climate *);
 static void temperature_init(struct climate *);
 static void temperature_update(struct climate *);
 
-static inline size_t
-wrap(long long x, unsigned long size)
-{
-	return (x + size) % size;
-}
-
 void
 climate_create(struct climate *c, struct lithosphere *l)
 {
@@ -70,10 +64,10 @@ lerp(float x, float y, const float *map)
 	float fy = floorf(y);
 	float cx = ceilf(x);
 	float cy = ceilf(y);
-	float m00 = map[wrap(fy, CLIMATE_LEN) * CLIMATE_LEN + wrap(fx, CLIMATE_LEN)];
-	float m10 = map[wrap(fy, CLIMATE_LEN) * CLIMATE_LEN + wrap(cx, CLIMATE_LEN)];
-	float m01 = map[wrap(cy, CLIMATE_LEN) * CLIMATE_LEN + wrap(fx, CLIMATE_LEN)];
-	float m11 = map[wrap(cy, CLIMATE_LEN) * CLIMATE_LEN + wrap(cx, CLIMATE_LEN)];
+	float m00 = map[wrapidx(fy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(fx, CLIMATE_LEN)];
+	float m10 = map[wrapidx(fy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(cx, CLIMATE_LEN)];
+	float m01 = map[wrapidx(cy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(fx, CLIMATE_LEN)];
+	float m11 = map[wrapidx(cy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(cx, CLIMATE_LEN)];
 	float m0 = m00 + (m10 - m00) * (x - fx);
 	float m1 = m01 + (m11 - m01) * (x - fx);
 	return m0 + (m1 - m0) * (y - fy);
@@ -105,10 +99,10 @@ equalize_temperature(struct climate *c)
 		size_t i = y * CLIMATE_LEN + x;
 		float t = c->inv_temp[i];
 		float d[4] = {
-			t - c->inv_temp[y * CLIMATE_LEN + wrap((long long)x-1, CLIMATE_LEN)],
-			t - c->inv_temp[y * CLIMATE_LEN + wrap((long long)x+1, CLIMATE_LEN)],
-			t - c->inv_temp[wrap((long long)y-1, CLIMATE_LEN) * CLIMATE_LEN + x],
-			t - c->inv_temp[wrap((long long)y+1, CLIMATE_LEN) * CLIMATE_LEN + x]
+			t - c->inv_temp[y * CLIMATE_LEN + wrapidx((long long)x-1, CLIMATE_LEN)],
+			t - c->inv_temp[y * CLIMATE_LEN + wrapidx((long long)x+1, CLIMATE_LEN)],
+			t - c->inv_temp[wrapidx((long long)y-1, CLIMATE_LEN) * CLIMATE_LEN + x],
+			t - c->inv_temp[wrapidx((long long)y+1, CLIMATE_LEN) * CLIMATE_LEN + x]
 		};
 		float *out = c->inv_temp_flow + i*4;
 		float outflow = 0;
@@ -137,10 +131,10 @@ equalize_temperature(struct climate *c)
 		float *out = c->inv_temp_flow + i*4;
 		c->inv_temp[i] -= out[0] + out[1] + out[2] + out[3];
 		size_t n[4] = {
-			y * CLIMATE_LEN + wrap((long long)x-1, CLIMATE_LEN),
-			y * CLIMATE_LEN + wrap((long long)x+1, CLIMATE_LEN),
-			wrap((long long)y-1, CLIMATE_LEN) * CLIMATE_LEN + x,
-			wrap((long long)y+1, CLIMATE_LEN) * CLIMATE_LEN + x
+			y * CLIMATE_LEN + wrapidx((long long)x-1, CLIMATE_LEN),
+			y * CLIMATE_LEN + wrapidx((long long)x+1, CLIMATE_LEN),
+			wrapidx((long long)y-1, CLIMATE_LEN) * CLIMATE_LEN + x,
+			wrapidx((long long)y+1, CLIMATE_LEN) * CLIMATE_LEN + x
 		};
 		for (size_t a = 0; a < 4; ++ a)
 			c->inv_temp[n[a]] += out[a];
@@ -198,18 +192,18 @@ temperature_init(struct climate *c)
 		c->inv_temp_init[i] = 1 - temp;
 	}
 
-	const int gkl = 16 * MAX(CLIMATE_LEN / 1024, 1);
-	const int gksz = 2*gkl+1;
+	const long long gkl = 16 * MAX(CLIMATE_LEN / 1024, 1);
+	const long long gksz = 2*gkl+1;
 	float gk[gksz];
 	GAUSSIANK(gk, gksz);
-	float *blur_line = xmalloc(CLIMATE_LEN * 2 * sizeof(*blur_line));
+	float *blur_line = xmalloc(CLIMATE_LEN * sizeof(*blur_line));
 
 	/* Blur temperature */
 	for (size_t y = 0; y < CLIMATE_LEN; ++ y) {
 		for (size_t x = 0; x < CLIMATE_LEN; ++ x) {
 			blur_line[x] = 0;
 			for (int g = 0; g < gksz; ++ g) {
-				size_t i = y * CLIMATE_LEN + wrap((long long)x+g-gkl, CLIMATE_LEN);
+				size_t i = y * CLIMATE_LEN + wrapidx(x+g-gkl, CLIMATE_LEN);
 				blur_line[x] += gk[g] * c->inv_temp_init[i];
 			}
 		}
@@ -220,7 +214,7 @@ temperature_init(struct climate *c)
 		for (size_t y = 0; y < CLIMATE_LEN; ++ y) {
 			blur_line[y] = 0;
 			for (int g = 0; g < gksz; ++ g) {
-				size_t i = wrap((long long)y+g-gkl, CLIMATE_LEN) * CLIMATE_LEN + x;
+				size_t i = wrapidx(y+g-gkl, CLIMATE_LEN) * CLIMATE_LEN + x;
 				blur_line[y] += gk[g] * c->inv_temp_init[i];
 			}
 		}

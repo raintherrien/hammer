@@ -32,3 +32,11 @@
 		k[i] /= sum;                       \
 	}                                          \
 } while (0)
+
+static inline unsigned long
+wrapidx(long long index, unsigned long size)
+{
+	while (index < 0)
+		index += size;
+	return index % size;
+}

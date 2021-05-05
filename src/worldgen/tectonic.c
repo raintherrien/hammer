@@ -161,22 +161,16 @@ static uint32_t segment_overlap(struct plate *p0, struct plate *p1,
  * Utility functions to wrap a potentially negative coordinate to the bounds
  * of a lithosphere map and convert between lithosphere and plate coordinates.
  */
-static inline long
-wrap(long X)
-{
-	while (X < 0)
-		X += LITHOSPHERE_LEN;
-	return X % LITHOSPHERE_LEN;
-}
+#define wrap(X) wrapidx(X,LITHOSPHERE_LEN)
 
-static inline void
+static void
 lithosphere_to_plate(struct plate *p, uint32_t lx, uint32_t ly, uint32_t pxy[2])
 {
 	pxy[0] = wrap(lroundf(lx + p->tx));
 	pxy[1] = wrap(lroundf(ly + p->ty));
 }
 
-static inline void
+static void
 plate_to_lithosphere(struct plate *p, uint32_t px, uint32_t py, uint32_t lxy[2])
 {
 	lxy[0] = wrap(lroundf(px - p->tx));
@@ -238,12 +232,12 @@ lithosphere_blit(struct lithosphere *l, float *uplift, unsigned long size)
 		float ny = sinf(v*2*M_PI)*frq/(2*M_PI);
 		float nz = sinf(u*2*M_PI)*frq/(2*M_PI);
 		float nw = cosf(v*2*M_PI)*frq/(2*M_PI);
-		nx += opensimplex4_fbm(n[0], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		ny += opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		nz += opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		float wx = opensimplex4_fbm(n[4], nx, ny, nz, nw, 6, 2);
-		float wy = opensimplex4_fbm(n[5], nx, ny, nz, nw, 6, 2);
+		nx += opensimplex4_fbm(n[0], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		ny += opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		nz += opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		float wx = opensimplex4_fbm(n[4], nx, ny, nz, nw, 4, 2);
+		float wy = opensimplex4_fbm(n[5], nx, ny, nz, nw, 4, 2);
 		size_t iw = wrap(lroundf(y / s + frq * wx)) * LITHOSPHERE_LEN +
 		            wrap(lroundf(x / s + frq * wy));
 		uplift[i] = l->mass[iw];
@@ -442,11 +436,11 @@ lithosphere_init_mass(struct lithosphere *l)
 		float ny = sinf(v*2*M_PI)*frq/(2*M_PI);
 		float nz = sinf(u*2*M_PI)*frq/(2*M_PI);
 		float nw = cosf(v*2*M_PI)*frq/(2*M_PI);
-		nx += opensimplex4_fbm(n[0], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		ny += opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		nz += opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 3, 4);
-		l->mass[i] = opensimplex4_fbm(n[4], nx, ny, nz, nw, 6, 2);
+		nx += opensimplex4_fbm(n[0], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		ny += opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		nz += opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		l->mass[i] = opensimplex4_fbm(n[4], nx, ny, nz, nw, 4, 2);
 		l->mass[i] = 1.2f + 1.5f * l->mass[i];
 	}
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i)

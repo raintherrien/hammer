@@ -2,6 +2,7 @@
 #define HAMMER_WORLDGEN_BIOME_H_
 
 #include "hammer/worldgen/climate.h"
+#include "hammer/worldgen/tectonic.h"
 
 enum biome {
 	/* Arctic */
@@ -53,10 +54,10 @@ unsigned char biome_color[BIOME_COUNT][3] = {
 };
 
 static enum biome
-biome_classification(float temp, float precip)
+biome_class(float elev, float temp, float precip)
 {
 	/* Special ocean biomes, denoted by negative precip */
-	if (precip < 0) {
+	if (elev < TECTONIC_CONTINENT_MASS) {
 		if (temp < CLIMATE_ARCTIC_MAX_TEMP)
 			return BIOME_ICE_SHEET;
 		else

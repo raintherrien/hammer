@@ -1,4 +1,5 @@
 #include "hammer/appstate/viz_climate.h"
+#include "hammer/appstate/viz_stream.h"
 #include "hammer/appstate/world_config.h"
 #include "hammer/cli.h"
 #include "hammer/error.h"
@@ -16,7 +17,7 @@
 
 struct viz_climate_appstate {
 	dltask task;
-	struct world_opts opts;
+	struct world_opts world_opts;
 	struct climate climate;
 	gui_btn_state cancel_btn_state;
 	int show_biomes;
@@ -35,13 +36,13 @@ static int viz_climate_gl_frame(void *);
 static void blit_biome_to_image(struct viz_climate_appstate *);
 
 dltask *
-viz_climate_appstate_alloc_detached(struct world_opts *opts,
+viz_climate_appstate_alloc_detached(const struct world_opts *world_opts,
                                     struct lithosphere *l)
 {
 	struct viz_climate_appstate *viz = xmalloc(sizeof(*viz));
 
 	viz->task = DL_TASK_INIT(viz_climate_entry);
-	viz->opts = *opts;
+	viz->world_opts = *world_opts;
 	climate_create(&viz->climate, l);
 
 	return &viz->task;
@@ -82,7 +83,13 @@ viz_climate_loop(DL_TASK_ARGS)
 	if (viz->climate.generation < CLIMATE_GENERATIONS) {
 		climate_update(&viz->climate);
 	} else {
-		/* XXX Next step */
+		dltask *next = viz_stream_appstate_alloc_detached(
+		                 &viz->world_opts, &viz->climate);
+		dlcontinuation(&viz->task, viz_climate_exit);
+		dlwait(&viz->task, 1);
+		dlnext(next, &viz->task);
+		dlasync(next);
+		return;
 	}
 
 	dltail(&viz->task, viz_climate_loop);
@@ -145,6 +152,7 @@ viz_climate_gl_frame(void *viz_)
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = padding,
 		.yoffset = padding,
+		.zoffset = 1,
 		.size    = font_size,
 		.weight  = 255
 	};
@@ -153,6 +161,7 @@ viz_climate_gl_frame(void *viz_)
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = padding,
 		.yoffset = padding + font_size,
+		.zoffset = 1,
 		.size    = font_size
 	};
 
@@ -160,6 +169,7 @@ viz_climate_gl_frame(void *viz_)
 		CHECK_OPTS_DEFAULTS,
 		.xoffset = padding,
 		.yoffset = padding + font_size * 2,
+		.zoffset = 1,
 		.size    = font_size,
 		.width   = check_size,
 		.height  = check_size
@@ -169,6 +179,7 @@ viz_climate_gl_frame(void *viz_)
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = padding + show_biomes_check_opts.width + 4,
 		.yoffset = padding + font_size * 2,
+		.zoffset = 1,
 		.size    = font_size
 	};
 
@@ -176,6 +187,7 @@ viz_climate_gl_frame(void *viz_)
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = padding,
 		.yoffset = padding + font_size * 3,
+		.zoffset = 1,
 		.size    = font_size
 	};
 
@@ -187,7 +199,7 @@ viz_climate_gl_frame(void *viz_)
 		IMG_OPTS_DEFAULTS,
 		.xoffset = window.width - padding - dim,
 		.yoffset = imgy,
-		.zoffset = 1,
+		.zoffset = 0,
 		.width  = dim,
 		.height = dim
 	};
@@ -212,9 +224,8 @@ viz_climate_gl_frame(void *viz_)
 		size_t i = imgy * CLIMATE_LEN + imgx;
 		float temp = 1 - viz->climate.inv_temp[i];
 		float precip = viz->climate.precipitation[i];
-		if (viz->climate.uplift[i] < TECTONIC_CONTINENT_MASS)
-			precip = -1;
-		enum biome b = biome_classification(temp, precip);
+		float elev = viz->climate.uplift[i];
+		enum biome b = biome_class(elev, temp, precip);
 		snprintf(viz->biome_tooltip_str,
 		         BIOME_TOOLTIP_STR_MAX_LEN,
 		         "Hovering over: %s",
@@ -251,14 +262,12 @@ static void
 blit_biome_to_image(struct viz_climate_appstate *viz)
 {
 	GLubyte *img = xmalloc(CLIMATE_AREA * sizeof(*img) * 3);
-	/* Blue below sealevel, green to white continent altitude */
 	if (viz->show_biomes) {
 		for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
 			float temp = 1 - viz->climate.inv_temp[i];
 			float precip = viz->climate.precipitation[i];
-			if (viz->climate.uplift[i] < TECTONIC_CONTINENT_MASS)
-				precip = -1;
-			enum biome b = biome_classification(temp, precip);
+			float elev = viz->climate.uplift[i];
+			enum biome b = biome_class(elev, temp, precip);
 			memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
 		}
 	} else {

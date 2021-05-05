@@ -2,6 +2,7 @@
 #define HAMMER_POISSON_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 /*
  * Sets pt to an array of two dimensional points pt (and length ptsz)
