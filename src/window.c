@@ -147,7 +147,7 @@ window_create(void)
 	window.keydown = SDL_GetKeyboardState(NULL);
 
 	gui_text_renderer_create(&window.gui_text_renderer);
-	gui_img_renderer_create(&window.gui_img_renderer);
+	gui_map_renderer_create(&window.gui_map_renderer);
 	gui_rect_renderer_create(&window.gui_rect_renderer);
 
 	for (size_t i = 0; i < FRAMES_IN_FLIGHT; ++ i) {
@@ -175,7 +175,7 @@ window_destroy(void)
 		gui_text_frame_destroy(&window.frames[i].gui_text_frame);
 	}
 	gui_rect_renderer_destroy(&window.gui_rect_renderer);
-	gui_img_renderer_destroy(&window.gui_img_renderer);
+	gui_map_renderer_destroy(&window.gui_map_renderer);
 	gui_text_renderer_destroy(&window.gui_text_renderer);
 	vector_free(&window.frame_events);
 	SDL_GL_DeleteContext(window.glcontext);
@@ -206,6 +206,7 @@ window_startframe(void)
 	window.current_frame->id = new_frame;
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+	window.resized = 0;
 	window.motion_x = 0;
 	window.motion_y = 0;
 	window.scroll = 0;
@@ -263,6 +264,7 @@ window_startframe(void)
 			break;
 		case SDL_WINDOWEVENT:
 			if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+				window.resized = 1;
 				window.width  = e.window.data1;
 				window.height = e.window.data2;
 				glViewport(0, 0, window.width, window.height);

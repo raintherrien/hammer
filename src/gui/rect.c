@@ -43,7 +43,7 @@ gui_rect_frame_create(struct gui_rect_renderer *renderer,
                       struct gui_rect_frame *frame)
 {
 	glBindVertexArray(renderer->vao);
-	
+
 	glGenBuffers(1, &frame->vbo);
 	GLbitfield flags = GL_MAP_WRITE_BIT |
 	                   GL_MAP_PERSISTENT_BIT |
@@ -85,10 +85,21 @@ gui_rect_render(struct gui_rect_renderer *renderer,
 }
 
 void
-gui_rect(struct rect_opts opts)
+gui_rect(gui_container *container, struct rect_opts opts)
 {
+	float container_offset[3] = { 0, 0, 0 };
+	if (container) {
+		float w = opts.xoffset + opts.width;
+		float h = opts.yoffset + opts.height;
+		gui_container_get_offsets(container, container_offset);
+		gui_container_add_element(container, w, h);
+	}
+	opts.xoffset += container_offset[0];
+	opts.yoffset += container_offset[1];
+	opts.zoffset += container_offset[2];
+
 	struct gui_rect_frame *frame = &window.current_frame->gui_rect_frame;
-	
+
 	const size_t VS = sizeof(struct gui_rect_vert);
 	float r = ((opts.color & 0xff000000) >> 24) / 255.0f;
 	float g = ((opts.color & 0x00ff0000) >> 16) / 255.0f;
@@ -98,18 +109,19 @@ gui_rect(struct rect_opts opts)
 	float x1 = opts.xoffset + opts.width;
 	float y0 = opts.yoffset;
 	float y1 = opts.yoffset + opts.height;
+	float z = opts.zoffset;
 
 	if ((frame->vb_vc + 6) * VS >= RECT_VBO_SIZE)
 		return;
 
 	struct gui_rect_vert vs[6] = {
-		{ .position = {x0, y0, 0}, .color = {r, g, b, a} },
-		{ .position = {x1, y1, 0}, .color = {r, g, b, a} },
-		{ .position = {x1, y0, 0}, .color = {r, g, b, a} },
+		{ .position = {x0, y0, z}, .color = {r, g, b, a} },
+		{ .position = {x1, y1, z}, .color = {r, g, b, a} },
+		{ .position = {x1, y0, z}, .color = {r, g, b, a} },
 
-		{ .position = {x0, y1, 0}, .color = {r, g, b, a} },
-		{ .position = {x1, y1, 0}, .color = {r, g, b, a} },
-		{ .position = {x0, y0, 0}, .color = {r, g, b, a} }
+		{ .position = {x0, y1, z}, .color = {r, g, b, a} },
+		{ .position = {x1, y1, z}, .color = {r, g, b, a} },
+		{ .position = {x0, y0, z}, .color = {r, g, b, a} }
 	};
 	size_t vi = frame->vb_vc;
 	memcpy(frame->vb + vi, vs, VS * 6);

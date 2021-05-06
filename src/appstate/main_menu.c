@@ -96,11 +96,6 @@ main_menu_gl_frame(void *main_menu_)
 
 	window_startframe();
 
-	const char *title = "Hammer";
-	const char *subtitle = "A collection of bad practices and anti-patterns";
-	const char *new_world_btn_text = "Generate new world!";
-	const char *exit_btn_text = "Exit";
-
 	unsigned btn_height = 48;
 	unsigned btn_font_size = btn_height - 16;
 
@@ -145,20 +140,11 @@ main_menu_gl_frame(void *main_menu_)
 		.size    = btn_font_size
 	};
 
-	gui_text_center(title, strlen(title), window.width, title_opts);
-	gui_text_center(subtitle, strlen(subtitle), window.width, subtitle_opts);
-	gui_text_center(main_menu->version_str, strlen(main_menu->version_str),
-	                window.width, version_str_opts);
-
-	main_menu->generate_new_world_btn_state = gui_btn(
-		main_menu->generate_new_world_btn_state,
-		new_world_btn_text, strlen(new_world_btn_text),
-		generate_new_world_btn_opts);
-
-	main_menu->exit_btn_state = gui_btn(
-		main_menu->exit_btn_state,
-		exit_btn_text, strlen(exit_btn_text),
-		exit_btn_opts);
+	gui_text_center(NULL, "Hammer", window.width, title_opts);
+	gui_text_center(NULL, "A collection of bad practices and anti-patterns", window.width, subtitle_opts);
+	gui_text_center(NULL, main_menu->version_str, window.width, version_str_opts);
+	main_menu->generate_new_world_btn_state = gui_btn(NULL, main_menu->generate_new_world_btn_state, "Generate new world!", generate_new_world_btn_opts);
+	main_menu->exit_btn_state = gui_btn(NULL, main_menu->exit_btn_state, "Exit", exit_btn_opts);
 
 	window_submitframe();
 

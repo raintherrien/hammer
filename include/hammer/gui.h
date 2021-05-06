@@ -21,6 +21,21 @@ typedef enum {
 	*/
 } text_style;
 
+typedef struct {
+	float hpadding;
+	float vpadding;
+	float xoffset;
+	float yoffset;
+	float zoffset;
+	float line_width;
+	float line_height;
+} gui_stack;
+
+typedef struct {
+	enum  { GUI_STACK } type;
+	union { gui_stack stack; };
+} gui_container;
+
 struct btn_opts {
 	uint32_t foreground;
 	uint32_t background;
@@ -59,6 +74,18 @@ struct edit_opts {
 	float width;
 };
 
+struct map_opts {
+	float xoffset;
+	float yoffset;
+	float zoffset;
+	float width;
+	float height;
+	float tran_x;
+	float tran_y;
+	float scale_x;
+	float scale_y;
+};
+
 struct rect_opts {
 	uint32_t color;
 	float xoffset;
@@ -90,6 +117,16 @@ struct text_opts {
 
 #define EDIT_OPTS_DEFAULTS BTN_OPTS_DEFAULTS
 
+#define MAP_OPTS_DEFAULTS .xoffset = 0, \
+                          .yoffset = 0, \
+                          .zoffset = 0, \
+                          .width   = 0, \
+                          .height  = 0, \
+                          .tran_x  = 0, \
+                          .tran_y  = 0, \
+                          .scale_x = 1, \
+                          .scale_y = 1
+
 #define RECT_OPTS_DEFAULTS .color = 0x9c9c9cff, \
                            .xoffset = 0, \
                            .yoffset = 0, \
@@ -103,31 +140,69 @@ struct text_opts {
                            .yoffset = 0,        \
                            .zoffset = 0
 
-gui_btn_state gui_btn(gui_btn_state prior_state,
-                      const char *text, size_t len,
-                      struct btn_opts);
-int  gui_check(int prior_state, struct check_opts);
-void gui_edit(char *text, size_t maxlen, struct edit_opts);
-void gui_rect(struct rect_opts);
-void gui_text(const char *text, size_t len, struct text_opts);
-void gui_text_center(const char *text, size_t len, float width, struct text_opts);
+gui_btn_state gui_btn(
+	gui_container  *container, /* optional */
+	gui_btn_state   prior_state,
+	const char     *text,
+	struct btn_opts opts
+);
 
-float gui_char_width(float font_size);
+int gui_check(
+	gui_container    *container, /* optional */
+	int               prior_state,
+	struct check_opts opts
+);
 
-struct img_opts {
+void gui_edit(
+	gui_container   *container, /* optional */
+	char            *text,
+	size_t           maxlen,
+	struct edit_opts opts
+);
+
+void gui_map(
+	gui_container  *container, /* optional */
+	GLuint          texture,
+	struct map_opts opts
+);
+
+void gui_rect(
+	gui_container   *container, /* optional */
+	struct rect_opts opts
+);
+
+void gui_text(
+	gui_container   *container, /* optional */
+	const char      *text,
+	struct text_opts opts
+);
+
+void gui_text_center(
+	gui_container   *container, /* optional */
+	const char      *text,
+	float            width,
+	struct text_opts opts
+);
+
+struct stack_opts {
+	float hpadding;
+	float vpadding;
 	float xoffset;
 	float yoffset;
 	float zoffset;
-	float width;
-	float height;
 };
 
-#define IMG_OPTS_DEFAULTS .xoffset = 0, \
-                          .yoffset = 0, \
-                          .zoffset = 0, \
-                          .width   = 0, \
-                          .height  = 0
+#define STACK_OPTS_DEFAULTS .hpadding = 0, \
+                            .vpadding = 0, \
+                            .xoffset = 0, \
+                            .yoffset = 0, \
+                            .zoffset = 0
 
-void gui_img(GLuint texture, struct img_opts);
+void gui_stack_init(gui_container *, struct stack_opts);
+void gui_stack_break(gui_container *);
+void gui_container_add_element(gui_container *, float width, float height);
+void gui_container_get_offsets(gui_container *, float[3]);
+
+float gui_char_width(float font_size);
 
 #endif /* HAMMER_GUI_H_ */

@@ -117,13 +117,26 @@ gui_text_render(struct gui_text_renderer *renderer,
 }
 
 void
-gui_text(const char *text, size_t len, struct text_opts opts)
+gui_text(gui_container   *container,
+         const char      *text,
+         struct text_opts opts)
 {
 	struct gui_text_renderer *renderer = &window.gui_text_renderer;
-	struct gui_text_frame  *frame = &window.current_frame->gui_text_frame;
-	
+	struct gui_text_frame *frame = &window.current_frame->gui_text_frame;
 	float char_width = opts.size * renderer->font_regular.character_ratio;
-	for (size_t i = 0; i < len; ++ i) {
+	size_t text_len = strlen(text);
+
+	float container_offset[3] = { 0, 0, 0 };
+	if (container) {
+		float w = text_len * char_width;
+		gui_container_get_offsets(container, container_offset);
+		gui_container_add_element(container, w, opts.size);
+	}
+	opts.xoffset += container_offset[0];
+	opts.yoffset += container_offset[1];
+	opts.zoffset += container_offset[2];
+
+	for (size_t i = 0; i < text_len; ++ i) {
 		if (TEXT_VBO_SIZE <= frame->vb_vc * sizeof(struct gui_text_vert))
 			continue;
 
@@ -145,11 +158,15 @@ gui_text(const char *text, size_t len, struct text_opts opts)
 }
 
 void
-gui_text_center(const char *text, size_t len, float width, struct text_opts opts)
+gui_text_center(gui_container   *container,
+                const char      *text,
+                float            width,
+                struct text_opts opts)
 {
+	size_t text_len = strlen(text);
 	float ww = gui_char_width(opts.size);
-	opts.xoffset += (width - len * ww) / 2;
-	gui_text(text, len, opts);
+	opts.xoffset += (width - text_len * ww) / 2;
+	gui_text(container, text, opts);
 }
 
 float

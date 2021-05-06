@@ -293,10 +293,6 @@ stream_graph_update(struct stream_graph *g)
 			g->arcs[t->root].receiver = t->node_receiver;
 	}
 
-	/* Calculate drainage area */
-	for (uint32_t ni = 0; ni < g->node_count; ++ ni)
-		flow_drainage_area(g, ni);
-
 	/* Calculate slope and perform thermal erosion */
 	for (uint32_t ni = 0; ni < g->node_count; ++ ni) {
 		struct stream_arc *arc = &g->arcs[ni];
@@ -313,6 +309,10 @@ stream_graph_update(struct stream_graph *g)
 			src->height -= xfer;
 		}
 	}
+
+	/* Calculate drainage area */
+	for (uint32_t ni = 0; ni < g->node_count; ++ ni)
+		flow_drainage_area(g, ni);
 
 	/*
 	 * I really don't understand the stream power equation, so I can't

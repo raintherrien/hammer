@@ -1,7 +1,7 @@
 #ifndef HAMMER_WINDOW_H_
 #define HAMMER_WINDOW_H_
 
-#include "hammer/gui/img.h"
+#include "hammer/gui/map.h"
 #include "hammer/gui/rect.h"
 #include "hammer/gui/text.h"
 #include <cglm/mat4.h>
@@ -28,7 +28,7 @@ enum {
 
 struct window {
 	struct gui_text_renderer gui_text_renderer;
-	struct gui_img_renderer gui_img_renderer;
+	struct gui_map_renderer gui_map_renderer;
 	struct gui_rect_renderer gui_rect_renderer;
 
 	SDL_Window   *handle;
@@ -41,6 +41,7 @@ struct window {
 	size_t        text_input_len;
 	mat4          ortho_matrix;
 	SDL_Keymod    keymod;
+	int           resized;
 	int           motion_x, motion_y;
 	int           mouse_x, mouse_y;
 	int           scroll;
