@@ -148,7 +148,7 @@ world_config_gl_frame(void *world_config_)
 	gui_container stack;
 	gui_stack_init(&stack, (struct stack_opts) {
 		STACK_OPTS_DEFAULTS,
-		.vpadding = 8,
+		.vpadding = element_padding,
 		.xoffset = border_padding,
 		.yoffset = border_padding,
 		.zoffset = 1

@@ -200,9 +200,7 @@ viz_stream_loop(DL_TASK_ARGS)
 		/* XXX Next step */
 	} else {
 		if (!wg->paused) {
-			/* Blitting takes MUCH longer than updating */
-			for (int i = 0; i < 2; ++ i)
-				stream_graph_update(wg->stream);
+			stream_graph_update(wg->stream);
 			glthread_execute(worldgen_gl_blit_stream_image, wg);
 		}
 	}
@@ -280,15 +278,40 @@ worldgen_gl_frame(void *wg_)
 				       (float)window.height / LITHOSPHERE_LEN);
 		wg->map_zoom = wg->min_map_zoom;
 	}
-	wg->map_zoom = CLAMP(wg->map_zoom + window.scroll / 100.0f, wg->min_map_zoom, 10);
+	if (window.scroll != 0) {
+		float delta = window.scroll / 100.0f;
+		if (wg->map_zoom + delta < 10 &&
+		    wg->map_zoom + delta > wg->min_map_zoom)
+		{
+			/*
+			 * Holy. Actual. Hell. This took me hours for some
+			 * reason. We're trying to zoom into the center of the
+			 * screen. We first need to determine how many pixels
+			 * we're losing (cropping) from both width and height.
+			 * HOWFUCKINGEVER these pixels will be in IMAGE SPACE
+			 * because our default zoom level normalizes the
+			 * shorter axis to, in this case, 1024. We need to
+			 * divide this number to normalize back to window
+			 * coordinates, otherwise we won't zoom in on the
+			 * center. We'll zoom in on the window coordinate of
+			 * whatever the center of our image space is (512?).
+			 */
+			float d = wg->map_zoom * (wg->map_zoom + delta);
+			float cropx = (window.width  * delta) / d;
+			float cropy = (window.height * delta) / d;
+			wg->map_tran_x += cropx / 2 * window.width  / 1024.0f;
+			wg->map_tran_y += cropy / 2 * window.height / 1024.0f;
+			wg->map_zoom += delta;
+		}
+	}
 
 	if (wg->mouse_captured) {
 		if (!window.mouse_held[MOUSEBM]) {
 			wg->mouse_captured = 0;
 			window_unlock_mouse();
 		}
-		wg->map_tran_x += window.motion_x / 1000.0f / wg->map_zoom;
-		wg->map_tran_y += window.motion_y / 1000.0f / wg->map_zoom;
+		wg->map_tran_x -= window.motion_x / wg->map_zoom;
+		wg->map_tran_y -= window.motion_y / wg->map_zoom;
 	}
 	if (window.mouse_pressed[MOUSEBM]) {
 		wg->mouse_captured = 1;
@@ -370,8 +393,10 @@ worldgen_gl_frame(void *wg_)
 	    window.mouse_x >= 0 && window.mouse_y >= 0 &&
 	    window.mouse_x < window.width && window.mouse_y < window.height)
 	{
-		size_t imgx = (window.mouse_x + wg->map_tran_x) / wg->map_zoom;
-		size_t imgy = (window.mouse_y + wg->map_tran_y) / wg->map_zoom;
+		size_t imgx = window.mouse_x / wg->map_zoom +
+		              wg->map_tran_x / window.width  * CLIMATE_LEN;
+		size_t imgy = window.mouse_y / wg->map_zoom +
+		              wg->map_tran_y / window.height * CLIMATE_LEN;
 		size_t i = wrapidx(imgy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(imgx, CLIMATE_LEN);
 		float temp = 1 - wg->climate->inv_temp[i];
 		float precip = wg->climate->precipitation[i];
@@ -394,8 +419,8 @@ worldgen_gl_frame(void *wg_)
 			.height = window.height,
 			.scale_x = wg->map_zoom * wx,
 			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x,
-			.tran_y = wg->map_tran_y
+			.tran_x = wg->map_tran_x / window.width,
+			.tran_y = wg->map_tran_y / window.height
 		});
 	} else if (wg->stream) {
 		const struct map_opts tab_opts = {
@@ -428,8 +453,8 @@ worldgen_gl_frame(void *wg_)
 			.height = window.height,
 			.scale_x = wg->map_zoom * wx,
 			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x,
-			.tran_y = wg->map_tran_y
+			.tran_x = wg->map_tran_x / window.width,
+			.tran_y = wg->map_tran_y / window.height
 		});
 	} else if (wg->climate) {
 		const struct map_opts tab_opts = {
@@ -462,8 +487,8 @@ worldgen_gl_frame(void *wg_)
 			.height = window.height,
 			.scale_x = wg->map_zoom * wx,
 			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x,
-			.tran_y = wg->map_tran_y
+			.tran_x = wg->map_tran_x / window.width,
+			.tran_y = wg->map_tran_y / window.height
 		});
 	} else if (wg->lithosphere) {
 		const struct map_opts tab_opts = {
@@ -597,6 +622,31 @@ putline(GLubyte *rgb, unsigned size,
 	}
 }
 
+static void
+swizzle(uint32_t i, GLubyte *rgb)
+{
+	/*
+	 * Very wonky RGB construction from the lower 12 bits of index
+	 */
+	float r = (((unsigned)i & (1<< 0))>> 0) +
+	          (((unsigned)i & (1<< 3))>> 3) +
+	          (((unsigned)i & (1<< 6))>> 6) +
+	          (((unsigned)i & (1<< 9))>> 9);
+
+	float g = (((unsigned)i & (1<< 1))>> 1) +
+	          (((unsigned)i & (1<< 4))>> 4) +
+	          (((unsigned)i & (1<< 7))>> 7) +
+	          (((unsigned)i & (1<<10))>>10);
+
+	float b = (((unsigned)i & (1<< 2))>> 2) +
+	          (((unsigned)i & (1<< 5))>> 5) +
+	          (((unsigned)i & (1<< 8))>> 8) +
+	          (((unsigned)i & (1<<11))>>11);
+	rgb[0] = (GLubyte)lroundf(255 * r / 4);
+	rgb[1] = (GLubyte)lroundf(255 * g / 4);
+	rgb[2] = (GLubyte)lroundf(255 * b / 4);
+}
+
 static int
 worldgen_gl_blit_stream_image(void *wg_)
 {
@@ -605,32 +655,6 @@ worldgen_gl_blit_stream_image(void *wg_)
 	size_t area = s->size * s->size;
 	GLubyte *img = xcalloc(area * 3, sizeof(*img));
 
-	for (size_t ni = 0; ni < s->node_count; ++ ni) {
-		struct stream_node *n = &s->nodes[ni];
-		GLubyte c[3];
-		if (n->height > TECTONIC_CONTINENT_MASS) {
-			float h = n->height - TECTONIC_CONTINENT_MASS;
-			c[0] = 148;
-			c[1] = MAX(0, 148 - 25 * h);
-			c[2] = 77;
-		} else {
-			c[0] = 50;
-			c[1] = (50 + 100 * n->height / TECTONIC_CONTINENT_MASS);
-			c[2] = 168;
-		}
-		for (long y = -4; y <= 4; ++ y)
-		for (long x = -4; x <= 4; ++ x) {
-			/* fast wrap since size is power of two */
-			long wx = (unsigned)(n->x + x + s->size) & (s->size - 1);
-			long wy = (unsigned)(n->y + y + s->size) & (s->size - 1);
-			size_t i = wy * s->size + wx;
-			img[i*3+0] = c[0];
-			img[i*3+1] = c[1];
-			img[i*3+2] = c[2];
-		}
-	}
-
-#if 0 /* XXX If print stream trees */
 	for (size_t i = 0; i < s->node_count; ++ i) {
 		struct stream_arc *arc = &s->arcs[i];
 		if (arc->receiver >= s->node_count)
@@ -661,15 +685,13 @@ worldgen_gl_blit_stream_image(void *wg_)
 			srcx, srcy,
 			dstx, dsty);
 	}
-#endif
 
-	/* XXX Debug
+	/* XXX Debug */
 	if (s->generation == 100) {
 		char filename[64];
 		snprintf(filename, 64, "stream%03d.png", s->generation);
 		write_rgb(filename, img, s->size, s->size);
 	}
-	*/
 
 	glTextureSubImage2D(wg->stream_img,
 	                    0, /* level */

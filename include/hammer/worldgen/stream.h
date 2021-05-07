@@ -30,7 +30,7 @@ struct stream_node {
 	float height;
 	float uplift;
 	float drainage;
-	unsigned generation;
+	unsigned char unwound;
 	// TODO: local k, m, n, talus?
 };
 

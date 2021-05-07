@@ -9,5 +9,5 @@ uniform vec2 scale;
 
 void main()
 {
-	out_color = texture(map, (fs_uv + translation) / scale);
+	out_color = texture(map, fs_uv / scale + translation);
 }

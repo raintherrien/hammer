@@ -27,9 +27,6 @@
 #define POISSON_RADIUS 4.0f
 #define POISSON_AREA (POISSON_RADIUS * POISSON_RADIUS * M_PI)
 
-/* Most significant bit used for lake identification in trees vector */
-//#define TREE_LAKE_BIT ((uint32_t)1<<31)
-//#define TREE_NODE_MASK (((uint32_t)-1)^TREE_LAKE_BIT)
 #define NO_NODE ((uint32_t)-1)
 
 static void node_lerp_uplift(const struct climate *, unsigned long size, struct stream_node *);
@@ -37,6 +34,7 @@ static uint32_t assign_tree(struct stream_graph *g, uint32_t nid);
 static uint32_t next_tree(struct stream_graph *g);
 static void flow_drainage_area(struct stream_graph *g, uint32_t ni);
 static void stream_power(struct stream_graph *g, uint32_t ni);
+static void add_to_depth_queue(struct stream_graph *g, uint32_t **depth_queue, uint32_t ni);
 
 void
 stream_graph_create(struct stream_graph *g,
@@ -109,7 +107,6 @@ stream_graph_create(struct stream_graph *g,
 		n->x = pt[i*2+0];
 		n->y = pt[i*2+1];
 		n->height = 0;
-		n->generation = 0;
 		node_lerp_uplift(climate, size, n);
 	}
 
@@ -179,11 +176,14 @@ stream_graph_update(struct stream_graph *g)
 	}
 	for (uint32_t i = 0; i < g->node_count; ++ i) {
 		g->nodes[i].tree = NO_NODE;
+		g->nodes[i].drainage = 0;
+		g->nodes[i].unwound = 0;
 		g->arcs[i].receiver = NO_NODE;
 	}
 
 	/* Generate stream arcs */
 	uint32_t edge_count = vector_size(g->edges);
+	/* TODO: Easily parallel. Gains would be worth it */
 	for (uint32_t ei = 0; ei < edge_count; ++ ei) {
 		struct stream_edge *e = &g->edges[ei];
 		uint32_t src;
@@ -210,8 +210,8 @@ stream_graph_update(struct stream_graph *g)
 			g->arcs[src].receiver = dst;
 			continue;
 		}
-		struct stream_node *dstn = &g->nodes[dst];
-		struct stream_node *rcvn = &g->nodes[g->arcs[src].receiver];
+		struct stream_node * restrict dstn = &g->nodes[dst];
+		struct stream_node * restrict rcvn = &g->nodes[g->arcs[src].receiver];
 		if (rcvn->height > dstn->height)
 			g->arcs[src].receiver = dst;
 	}
@@ -310,16 +310,24 @@ stream_graph_update(struct stream_graph *g)
 		}
 	}
 
-	/* Calculate drainage area */
+	/* Generate depth queue */
+	uint32_t *depth_queue = NULL; /* vector */
 	for (uint32_t ni = 0; ni < g->node_count; ++ ni)
-		flow_drainage_area(g, ni);
+		add_to_depth_queue(g, &depth_queue, ni);
+
+	/* Calculate drainage area */
+	uint32_t depth_queue_size = vector_size(depth_queue);
+	for (uint32_t ix = depth_queue_size; ix > 0; -- ix)
+		flow_drainage_area(g, depth_queue[ix-1]);
 
 	/*
 	 * I really don't understand the stream power equation, so I can't
 	 * rightfully say that's what I'm calculating here...
 	 */
-	for (uint32_t ni = 0; ni < g->node_count; ++ ni)
-		stream_power(g, ni);
+	for (uint32_t i = 0; i < depth_queue_size; ++ i)
+		stream_power(g, depth_queue[i]);
+
+	vector_free(&depth_queue);
 }
 
 static void
@@ -385,16 +393,12 @@ next_tree(struct stream_graph *g)
 static void
 flow_drainage_area(struct stream_graph *g, uint32_t ni)
 {
-	do {
-		struct stream_node *n = &g->nodes[ni];
-		/* Reduce drainage below ocean level */
-		if (n->height >= TECTONIC_CONTINENT_MASS)
-			n->drainage += POISSON_AREA;
-		else
-			n->drainage += POISSON_AREA *
-			               (n->height / TECTONIC_CONTINENT_MASS);
-		ni = g->arcs[ni].receiver;
-	} while (ni != NO_NODE);
+	struct stream_node *n = &g->nodes[ni];
+	/* Reduce drainage below ocean level */
+	n->drainage += POISSON_AREA * MIN(1, n->height / TECTONIC_CONTINENT_MASS);
+	uint32_t child = g->arcs[ni].receiver;
+	if (child != NO_NODE)
+		g->nodes[child].drainage += n->drainage;
 }
 
 static void
@@ -403,18 +407,23 @@ stream_power(struct stream_graph *g, uint32_t ni)
 	struct stream_node *n = &g->nodes[ni];
 	struct stream_arc *arc = &g->arcs[ni];
 
-	if (n->generation == g->generation)
-		return;
-
 	if (arc->receiver == NO_NODE) {
 		n->height += n->uplift * STREAM_TIMESTEP;
 	} else {
-		stream_power(g, arc->receiver);
 		float receiver_height = g->nodes[arc->receiver].height;
-		float ero = 0.5f * sqrtf(n->drainage) / (2 * POISSON_RADIUS);
+		float ero = 4 * sqrtf(n->drainage) / (2 * POISSON_RADIUS);
 		n->height += STREAM_TIMESTEP * (n->uplift + ero * receiver_height);
 		n->height /= 1 + ero * STREAM_TIMESTEP;
 	}
+}
 
-	n->generation = g->generation;
+static void
+add_to_depth_queue(struct stream_graph *g, uint32_t **depth_queue, uint32_t ni)
+{
+	if (g->nodes[ni].unwound)
+		return;
+	if (g->arcs[ni].receiver != NO_NODE)
+		add_to_depth_queue(g, depth_queue, g->arcs[ni].receiver);
+	vector_push(depth_queue, ni);
+	g->nodes[ni].unwound = 1;
 }
