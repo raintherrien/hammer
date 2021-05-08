@@ -140,6 +140,16 @@ struct segment {
 	uint16_t id;
 };
 
+/*
+ * I've concocted these three fields to replace mass and extract rock
+ * composition information. Mass of a cell is the sum of these fields.
+ */
+struct tectonic_mass_composition {
+	float sediment;
+	float metamorphic;
+	float igneous;
+};
+
 struct plate {
 	struct segment *segments;
 	/*
@@ -153,7 +163,7 @@ struct plate {
 	 */
 	float tvx, tvy;
 	float tx, ty;
-	float mass[LITHOSPHERE_AREA];
+	struct tectonic_mass_composition mass[LITHOSPHERE_AREA];
 	/*
 	 * Do NOT attempt to define this using four points. Trust me. It's a
 	 * total shitshow when you're dealing with iterating over wrapping
@@ -169,7 +179,7 @@ struct lithosphere {
 	struct collision *collisions;
 	struct plate *plates;
 	WELL512  rng;
-	float    mass[LITHOSPHERE_AREA];
+	struct tectonic_mass_composition mass[LITHOSPHERE_AREA];
 	uint32_t generation;
 	uint32_t owner[LITHOSPHERE_AREA];
 	uint32_t prev_owner[LITHOSPHERE_AREA];

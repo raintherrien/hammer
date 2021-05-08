@@ -595,14 +595,17 @@ worldgen_gl_blit_lithosphere_image(void *wg_)
 	GLubyte *img = xmalloc(LITHOSPHERE_AREA * sizeof(*img) * 3);
 	/* Blue below sealevel, green to red continent altitude */
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
-		if (l->mass[i] > TECTONIC_CONTINENT_MASS) {
-			float h = l->mass[i] - TECTONIC_CONTINENT_MASS;
+		float total_mass = l->mass[i].sediment +
+		                   l->mass[i].metamorphic +
+		                   l->mass[i].igneous;
+		if (total_mass > TECTONIC_CONTINENT_MASS) {
+			float h = total_mass - TECTONIC_CONTINENT_MASS;
 			img[i*3+0] = 30 + 95 * MIN(2,h) / 1.5f;
 			img[i*3+1] = 125;
 			img[i*3+2] = 30;
 		} else {
 			img[i*3+0] = 50;
-			img[i*3+1] = 50 + 100 * l->mass[i] / TECTONIC_CONTINENT_MASS;
+			img[i*3+1] = 50 + 100 * total_mass / TECTONIC_CONTINENT_MASS;
 			img[i*3+2] = 168;
 		}
 	}

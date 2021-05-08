@@ -110,9 +110,9 @@ static void plate_erode(struct plate *, const struct tectonic_opts *);
  * destination segment in the destination plate. in_segment and owner are
  * updated.
  */
-static void plate_swap_segment(struct lithosphere *l,
-                               uint32_t src_pi, uint32_t dst_pi,
-                               uint16_t src_si, uint16_t dst_si);
+static void plate_collide(struct lithosphere *l,
+                          uint32_t src_pi, uint32_t dst_pi,
+                          uint16_t src_si, uint16_t dst_si);
 
 /*
  * Blit plate mass onto lithosphere, perform subduction and collision mass
@@ -120,6 +120,13 @@ static void plate_swap_segment(struct lithosphere *l,
  */
 static void plate_blit(struct lithosphere *, uint32_t pi,
                        const struct tectonic_opts *);
+
+/*
+ * Moves material m to a plate as a result of a collision
+ */
+static void plate_cell_collision(struct plate *p, uint32_t wx, uint32_t wy,
+                                 struct tectonic_mass_composition m,
+                                 uint16_t si);
 
 /*
  * Frees memory associated with a plate.
@@ -132,8 +139,8 @@ static void plate_destroy(struct plate *);
 static void plate_init_velocity(struct plate *, WELL512);
 
 /*
- * plate_recalculate_segments() subdivides the plate's continental mass into
- * segments. See tectonic_opts.segment_radius for details.
+ * plate_segment() subdivides the plate's continental mass into segments. See
+ * tectonic_opts.segment_radius for details.
  *
  * plate_growbfs_segment() is the breadth-first search component of finding
  * segments.
@@ -145,10 +152,14 @@ static void plate_segment(struct plate *, uint16_t *sid_ter,
 
 /*
  * Sets or adds crust to a plate, and assigns that mass to a segment, using
- * world coordinates. TODO: the add_not_overwrite param is me being lazy.
+ * world coordinates.
  */
 static void plate_set_mass(struct plate *, uint32_t wx, uint32_t wy,
-                           int add_not_overwrite, float mass, uint16_t si);
+                           struct tectonic_mass_composition mass,
+                           uint16_t si);
+
+/* Removes sediment first, then metamorphic, then igneous */
+static void remove_mass(struct tectonic_mass_composition *m, float remove);
 
 /*
  * Calculates the total area two segments overlap. This is a very expensive
@@ -240,7 +251,9 @@ lithosphere_blit(struct lithosphere *l, float *uplift, unsigned long size)
 		float wy = opensimplex4_fbm(n[5], nx, ny, nz, nw, 4, 2);
 		size_t iw = wrap(lroundf(y / s + frq * wx)) * LITHOSPHERE_LEN +
 		            wrap(lroundf(x / s + frq * wy));
-		uplift[i] = l->mass[iw];
+		uplift[i] = l->mass[iw].sediment +
+		            l->mass[iw].metamorphic +
+		            l->mass[iw].igneous;
 	}
 	for (size_t i = 0; i < 6; ++ i)
 		free(n[i]);
@@ -260,21 +273,30 @@ divergent_cell(struct lithosphere *l, uint32_t i,
 		if (dy == 0 && dx == 0)
 			continue;
 		uint32_t n = wrap(dy + y) * LITHOSPHERE_LEN + wrap(dx + x);
-		float nh = (l->mass[n] - TECTONIC_OCEAN_FLOOR_MASS) / (TECTONIC_CONTINENT_MASS - TECTONIC_OCEAN_FLOOR_MASS);
+		float nh = l->mass[n].sediment +
+		           l->mass[n].metamorphic +
+		           l->mass[n].igneous;
+		/* Normalize mass [0,1] between ocean floor and continent */
+		nh = (nh - TECTONIC_OCEAN_FLOOR_MASS) /
+		     (TECTONIC_CONTINENT_MASS - TECTONIC_OCEAN_FLOOR_MASS);
 		if (nh > 1)
 			nh = 1;
 		h = MAX(h, nh);
 	}
 	h = powf(h-0.1f,2) + powf(0.5f-h,3);
-	float new_mass = TECTONIC_OCEAN_FLOOR_MASS + TECTONIC_CONTINENT_MASS * h;
+	struct tectonic_mass_composition new_mass = {
+		.sediment = 0,
+		.metamorphic = 0,
+		.igneous = h * TECTONIC_CONTINENT_MASS + TECTONIC_OCEAN_FLOOR_MASS
+	};
 	if (l->generation % opts->rift_ticks == (opts->rift_ticks-1)) {
 		if (WELL512f(l->rng) <= opts->volcano_chance)
-			new_mass = opts->volcano_mass;
+			new_mass.igneous = opts->volcano_mass;
 		else
-			new_mass = opts->rift_mass;
+			new_mass.igneous = opts->rift_mass;
 	}
 	l->owner[i] = po;
-	plate_set_mass(l->plates + po, x, y, 0, new_mass, NO_SEGMENT);
+	plate_set_mass(l->plates + po, x, y, new_mass, NO_SEGMENT);
 }
 
 static void
@@ -388,8 +410,9 @@ lithosphere_create_plates(struct lithosphere *l,
 		for (uint32_t x = 0; x < p->w;  ++ x) {
 			size_t i = wrap(p->top  + y) * LITHOSPHERE_LEN +
 			           wrap(p->left + x);
-			if (l->owner[i] == pi)
+			if (l->owner[i] == pi) {
 				p->mass[i] = l->mass[i];
+			}
 		}
 		plate_init_velocity(p, l->rng);
 	}
@@ -409,6 +432,8 @@ lithosphere_init_mass(struct lithosphere *l)
 	};
 	const float wf = 0.25f;
 	const float frq = 9.5f;
+
+	memset(l->mass, 0, LITHOSPHERE_AREA * sizeof(*l->mass));
 
 	for (uint32_t y = 0; y < LITHOSPHERE_LEN; ++ y)
 	for (uint32_t x = 0; x < LITHOSPHERE_LEN; ++ x) {
@@ -440,12 +465,19 @@ lithosphere_init_mass(struct lithosphere *l)
 		ny += opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
 		nz += opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
 		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
-		l->mass[i] = opensimplex4_fbm(n[4], nx, ny, nz, nw, 4, 2);
-		l->mass[i] = 1.2f + 1.5f * l->mass[i];
+		l->mass[i].igneous = opensimplex4_fbm(n[4], nx, ny, nz, nw, 4, 2);
+		l->mass[i].igneous = 1.2f + 1.5f * l->mass[i].igneous;
 	}
-	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i)
-		if (l->mass[i] < TECTONIC_OCEAN_FLOOR_MASS)
-			l->mass[i] = TECTONIC_OCEAN_FLOOR_MASS;
+	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
+		if (l->mass[i].igneous < TECTONIC_OCEAN_FLOOR_MASS)
+			l->mass[i].igneous = TECTONIC_OCEAN_FLOOR_MASS;
+		/* Erode to sediment relative to "shore height" */
+		const float shoreheight = 0.2f;
+		float d = fabsf(l->mass[i].igneous - (TECTONIC_CONTINENT_MASS + shoreheight));
+		float erode = CLAMP(1 - MIN(0.5f, d), 0, l->mass[i].igneous);
+		l->mass[i].sediment += erode;
+		l->mass[i].igneous -= erode;
+	}
 	for (size_t i = 0; i < 5; ++ i)
 		free(n[i]);
 }
@@ -526,9 +558,9 @@ lithosphere_update_impl(struct lithosphere *l,
 			 */
 			if (overlap / smaller_area >= opts->merge_ratio) {
 				if (s0->area > s1->area)
-					plate_swap_segment(l, l->owner[dst], c->plate_index, si1, si0);
+					plate_collide(l, l->owner[dst], c->plate_index, si1, si0);
 				else
-					plate_swap_segment(l, c->plate_index, l->owner[dst], si0, si1);
+					plate_collide(l, c->plate_index, l->owner[dst], si0, si1);
 			}
 		}
 	}
@@ -563,7 +595,9 @@ plate_erode(struct plate *p, const struct tectonic_opts *opts)
 	for (uint32_t x = 0; x < p->w;  ++ x) {
 		size_t i = wrap(p->top  + y) * LITHOSPHERE_LEN +
 			   wrap(p->left + x);
-		float h = p->mass[i];
+		float h = p->mass[i].sediment +
+		          p->mass[i].metamorphic +
+		          p->mass[i].igneous;
 		if (h <= 0)
 			continue;
 		uint32_t ni[8] = {
@@ -582,16 +616,19 @@ plate_erode(struct plate *p, const struct tectonic_opts *opts)
 		                : opts->continent_talus;
 		for (size_t i = 0; i < 8; ++ i) {
 			size_t n = ni[i];
-			if (p->mass[n] <= 0) {
+			float nm = p->mass[n].sediment +
+			           p->mass[n].metamorphic +
+			           p->mass[n].igneous;
+			if (nm <= 0) {
 				nh[i] = 0;
 			}
 			/* Erode land into ocean at half rate */
 			else if (h >= TECTONIC_CONTINENT_MASS &&
-			         p->mass[n] < TECTONIC_CONTINENT_MASS)
+			         nm < TECTONIC_CONTINENT_MASS)
 			{
-				nh[i] = (h - p->mass[n] - talus) / 2;
+				nh[i] = (h - nm - talus) / 2;
 			} else {
-				nh[i] = h - p->mass[n] - talus;
+				nh[i] = h - nm - talus;
 			}
 		}
 		float dh = 0; /* delta to lowest neighbor */
@@ -609,11 +646,13 @@ plate_erode(struct plate *p, const struct tectonic_opts *opts)
 			da = dh / da;
 		}
 		if (dh > FLT_EPSILON) {
-			p->mass[i] -= dh;
+			/* Turn half into sediment, transport other half as sediment */
+			remove_mass(&p->mass[i], dh * 2);
+			p->mass[i].sediment += dh;
 			for (size_t i = 0; i < 8; ++ i) {
 				size_t n = ni[i];
 				if (nh[i] > 0)
-					p->mass[n] += nh[i] * da;
+					p->mass[n].sediment += nh[i] * da;
 			}
 		}
 
@@ -621,9 +660,9 @@ plate_erode(struct plate *p, const struct tectonic_opts *opts)
 }
 
 static void
-plate_swap_segment(struct lithosphere *l,
-                   uint32_t src_pi, uint32_t dst_pi,
-                   uint16_t src_si, uint16_t dst_si)
+plate_collide(struct lithosphere *l,
+              uint32_t src_pi, uint32_t dst_pi,
+              uint16_t src_si, uint16_t dst_si)
 {
         struct plate *src = l->plates + src_pi;
         struct plate *dst = l->plates + dst_pi;
@@ -636,11 +675,10 @@ plate_swap_segment(struct lithosphere *l,
 		if (src->in_segment[pi] == src_si) {
 			uint32_t wxy[2];
 			plate_to_lithosphere(src, px, py, wxy);
-			float mass = src->mass[pi];
-			plate_set_mass(dst, wxy[0], wxy[1], 1, mass, dst_si);
+			plate_cell_collision(dst, wxy[0], wxy[1], src->mass[pi], dst_si);
 			l->owner[wxy[1] * LITHOSPHERE_LEN + wxy[0]] = dst_pi;
+			src->mass[pi] = (struct tectonic_mass_composition) { 0 };
 			src->in_segment[pi] = NO_SEGMENT;
-			src->mass[pi] = 0;
 		}
 	}
 	/*
@@ -694,8 +732,15 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 		lithosphere_to_plate(p, x, y, pxy);
 		size_t dst = y * LITHOSPHERE_LEN + x;
 		size_t src = pxy[1] * LITHOSPHERE_LEN + pxy[0];
-		if (p->mass[src] <= 0)
+		float src_total_mass = p->mass[src].sediment +
+		                       p->mass[src].metamorphic +
+		                       p->mass[src].igneous;
+		float dst_total_mass = l->mass[dst].sediment +
+		                       l->mass[dst].metamorphic +
+		                       l->mass[dst].igneous;
+		if (src_total_mass <= 0)
 			continue;
+
 		if (l->owner[dst] == NO_PLATE) {
 			/* No collision! Claim this cell */
 			l->owner[dst] = pi;
@@ -712,18 +757,19 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 		 * Oceanic-oceanic subduction. This plate has less
 		 * crust and thus subducts.
 		 */
-		if (p->mass[src] < TECTONIC_CONTINENT_MASS &&
-		    l->mass[dst] > p->mass[src])
+		if (src_total_mass < TECTONIC_CONTINENT_MASS &&
+		    dst_total_mass > src_total_mass)
 		{
-			float xfer = MAX(MIN_XFER, opts->subduction_xfer *
-			                           p->mass[src]);
+			float xfer = MAX(MIN_XFER, opts->subduction_xfer * src_total_mass);
 			/* Remove transferred mass from source */
-			p->mass[src] -= xfer;
-			/* Add transferred mass to receiver */
-			prev_plate->mass[prev_src] += xfer;
-			l->mass[dst] += xfer;
+			remove_mass(&p->mass[src], xfer);
+			src_total_mass -= xfer;
+			/* Add transferred mass to receiver as igneous */
+			dst_total_mass += xfer;
+			prev_plate->mass[prev_src].igneous += xfer;
+			l->mass[dst].igneous += xfer;
 
-			if (p->mass[src] <= 0) {
+			if (src_total_mass <= 0) {
 				p->in_segment[src] = NO_SEGMENT;
 				continue;
 			}
@@ -734,17 +780,18 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 		 * collision any different from an oceanic-crust
 		 * collision. We certainly could...
 		 */
-		else if (l->mass[dst] < TECTONIC_CONTINENT_MASS) {
-			float xfer = MAX(MIN_XFER, opts->subduction_xfer *
-			                           l->mass[dst]);
+		else if (dst_total_mass < TECTONIC_CONTINENT_MASS) {
+			float xfer = MAX(MIN_XFER, opts->subduction_xfer * dst_total_mass);
 			/* Remove transferred mass from source */
-			prev_plate->mass[prev_src] -= xfer;
-			l->mass[dst] -= xfer;
-			/* Add transferred mass to receiver */
-			p->mass[src] += xfer;
+			remove_mass(&prev_plate->mass[prev_src], xfer);
+			remove_mass(&l->mass[dst], xfer);
+			dst_total_mass -= xfer;
+			/* Add transferred mass to receiver as igneous */
+			src_total_mass += xfer;
+			p->mass[src].igneous += xfer;
 
 			/* If last plate is gone, claim cell */
-			if (l->mass[dst] <= 0) {
+			if (dst_total_mass <= 0) {
 				prev_plate->in_segment[prev_src] = NO_SEGMENT;
 				l->owner[dst] = pi;
 				l->mass[dst] = p->mass[src];
@@ -756,13 +803,14 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 		 * pretty horrid streaking, so this plate always subducts.
 		 */
 		else {
-			float xfer = MAX(MIN_XFER, opts->collision_xfer *
-			                           p->mass[src]);
-			p->mass[src] -= xfer;
-			prev_plate->mass[prev_src] += xfer;
-			l->mass[dst] += xfer;
+			float xfer = MAX(MIN_XFER, opts->collision_xfer * src_total_mass);
+			remove_mass(&p->mass[src], xfer);
+			src_total_mass -= xfer;
+			prev_plate->mass[prev_src].metamorphic += xfer;
+			l->mass[dst].metamorphic += xfer;
+			dst_total_mass += xfer;
 
-			if (p->mass[src] <= 0) {
+			if (src_total_mass <= 0) {
 				p->in_segment[src] = NO_SEGMENT;
 				continue;
 			}
@@ -796,6 +844,60 @@ plate_destroy(struct plate *p)
 }
 
 static void
+plate_cell_collision(struct plate *p, uint32_t wx, uint32_t wy,
+                     struct tectonic_mass_composition m,
+                     uint16_t si)
+{
+	uint32_t pxy[2];
+	lithosphere_to_plate(p, wx, wy, pxy);
+	size_t i = pxy[1] * LITHOSPHERE_LEN + pxy[0];
+	/* Maybe grow horizontally */
+	if (pxy[0] < p->left) {
+		p->w += p->left - pxy[0];
+		p->left = pxy[0];
+	} else if (pxy[0] - p->left + 1 > p->w) {
+		p->w = pxy[0] - p->left + 1;
+	}
+	/* Maybe grow vertically */
+	if (pxy[1] < p->top) {
+		p->h += p->top - pxy[1];
+		p->top = pxy[1];
+	} else if (pxy[1] - p->top + 1 > p->h) {
+		p->h = pxy[1] - p->top + 1;
+	}
+
+	/* Limit dimensions */
+	if (p->w >= LITHOSPHERE_LEN) {
+		p->left = 0;
+		p->w = LITHOSPHERE_LEN;
+	}
+	if (p->h >= LITHOSPHERE_LEN) {
+		p->top = 0;
+		p->h = LITHOSPHERE_LEN;
+	}
+
+	/* Add mass */
+	if (p->in_segment[i] != NO_SEGMENT) {
+		/* Arbitrary ratios for collision transformation */
+		float total_mass_xfer = m.sediment +
+					m.metamorphic +
+					m.igneous;
+		p->mass[i].sediment    += 0.1f * total_mass_xfer;
+		p->mass[i].metamorphic += 0.7f * total_mass_xfer;
+		p->mass[i].igneous     += 0.2f * total_mass_xfer;
+	} else {
+		p->mass[i] = m;
+	}
+	if (p->in_segment[i] != si) {
+		if (p->in_segment[i] != NO_SEGMENT)
+			-- p->segments[p->in_segment[i]].area;
+		if (si != NO_SEGMENT)
+			++ p->segments[si].area;
+		p->in_segment[i] = si;
+	}
+}
+
+static void
 plate_growbfs_segment(struct plate *p, uint32_t **bfs, uint16_t si,
                       const struct tectonic_opts *opts)
 {
@@ -815,8 +917,11 @@ plate_growbfs_segment(struct plate *p, uint32_t **bfs, uint16_t si,
 			uint32_t py = wrap(srcy + yy);
 			uint32_t px = wrap(srcx + xx);
 			uint32_t neighbor = py * LITHOSPHERE_LEN + px;
+			float neighbor_mass = p->mass[neighbor].sediment +
+			                      p->mass[neighbor].metamorphic +
+			                      p->mass[neighbor].igneous;
 			if (p->in_segment[neighbor] == NO_SEGMENT &&
-			    p->mass[neighbor] >= TECTONIC_CONTINENT_MASS)
+			    neighbor_mass >= TECTONIC_CONTINENT_MASS)
 			{
 				/* claim and mark as new source */
 				p->in_segment[neighbor] = si;
@@ -881,8 +986,11 @@ plate_segment(struct plate *p, uint16_t *sid_ter,
 	for (uint32_t x = 0; x < p->w;  ++ x) {
 		size_t i = wrap(p->top  + y) * LITHOSPHERE_LEN +
 			   wrap(p->left + x);
+		float total_mass = p->mass[i].sediment +
+		                   p->mass[i].metamorphic +
+		                   p->mass[i].igneous;
 		if (p->in_segment[i] != NO_SEGMENT ||
-		    p->mass[i] < TECTONIC_CONTINENT_MASS)
+		    total_mass < TECTONIC_CONTINENT_MASS)
 		{
 			continue;
 		}
@@ -911,7 +1019,8 @@ plate_segment(struct plate *p, uint16_t *sid_ter,
 
 static void
 plate_set_mass(struct plate *p, uint32_t wx, uint32_t wy,
-               int add_not_overwrite, float m, uint16_t si)
+               struct tectonic_mass_composition m,
+               uint16_t si)
 {
 	uint32_t pxy[2];
 	lithosphere_to_plate(p, wx, wy, pxy);
@@ -941,11 +1050,7 @@ plate_set_mass(struct plate *p, uint32_t wx, uint32_t wy,
 		p->h = LITHOSPHERE_LEN;
 	}
 
-	/* Add mass */
-	if (add_not_overwrite)
-		p->mass[i] += m;
-	else
-		p->mass[i] = m;
+	p->mass[i] = m;
 	if (p->in_segment[i] != si) {
 		if (p->in_segment[i] != NO_SEGMENT)
 			-- p->segments[p->in_segment[i]].area;
@@ -953,4 +1058,16 @@ plate_set_mass(struct plate *p, uint32_t wx, uint32_t wy,
 			++ p->segments[si].area;
 		p->in_segment[i] = si;
 	}
+}
+
+static void
+remove_mass(struct tectonic_mass_composition *m, float remove)
+{
+	/* Remove from sediment first, etc. */
+	float rs = MIN(m->sediment, remove);
+	float rm = MIN(m->metamorphic, remove - rs);
+	float ri = MIN(m->igneous, remove - rs - rm);
+	if (rs) m->sediment    -= rs;
+	if (rm) m->metamorphic -= rm;
+	if (ri) m->igneous     -= ri;
 }
