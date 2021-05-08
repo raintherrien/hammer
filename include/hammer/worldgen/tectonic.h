@@ -88,12 +88,12 @@ struct tectonic_opts {
 #define TECTONIC_OPTS_DEFAULTS        \
 	.collision_xfer   = 0.035f,   \
 	.subduction_xfer  = 0.025f,   \
-	.merge_ratio      = 0.125f,   \
+	.merge_ratio      = 0.2f,     \
 	.rift_mass        = 0.9f,     \
 	.volcano_mass     = 15.0f,    \
 	.volcano_chance   = 0.01f,    \
-	.continent_talus  = 0.4f,     \
-	.ocean_talus      = 0.3f,     \
+	.continent_talus  = 0.1f,     \
+	.ocean_talus      = 0.05f,    \
 	.generation_steps = 100,      \
 	.generations      = 2,        \
 	.min_plates       = 10,       \
