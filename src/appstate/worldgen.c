@@ -873,7 +873,10 @@ worldgen_gl_blit_composite_image(void *wg_)
 		else if (wrapy && dsty < srcy)
 			dsty += s->size;
 		putline(img, s->size,
-			0, 0, 166, CLAMP(dst->drainage / 10000.0f, 0, 1),
+			biome_color[BIOME_OCEAN][0],
+			biome_color[BIOME_OCEAN][1],
+			biome_color[BIOME_OCEAN][2],
+			CLAMP(src->drainage / 10000.0f, 0, 1),
 			srcx, srcy,
 			dstx, dsty);
 	}
