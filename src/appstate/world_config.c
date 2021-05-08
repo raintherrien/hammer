@@ -152,14 +152,15 @@ world_config_gl_frame(void *world_config_)
 		.yoffset = border_padding,
 		.zoffset = 1
 	});
+	gui_container_push(&stack);
 
-	gui_text(&stack, "World Generation Configuration", bold_text_opts);
+	gui_text("World Generation Configuration", bold_text_opts);
 	gui_stack_break(&stack);
 
 	const char *scale_button_text[6] = {
 		"", "Tiny", "Small", "Medium", "Large", "Compensating"
 	};
-	gui_text(&stack, "World Scale: ", normal_text_opts);
+	gui_text("World Scale: ", normal_text_opts);
 	for (int i = 1; i <= 5; ++ i) {
 		struct btn_opts scale_btn_opts = {
 			BTN_OPTS_DEFAULTS,
@@ -168,8 +169,7 @@ world_config_gl_frame(void *world_config_)
 			.height = font_size + 2,
 			.size = font_size
 		};
-		if (GUI_BTN_PRESSED == gui_btn(&stack,
-		                               world_config->scale == i,
+		if (GUI_BTN_PRESSED == gui_btn(world_config->scale == i,
 		                               scale_button_text[i],
 		                               scale_btn_opts))
 		{
@@ -178,25 +178,27 @@ world_config_gl_frame(void *world_config_)
 	}
 	gui_stack_break(&stack);
 
-	gui_text(&stack, "World Seed:  ", normal_text_opts);
-	gui_edit(&stack, world_config->seed_edit_buf,  NUM_EDIT_BUFFER_LEN, num_edit_opts);
+	gui_text("World Seed:  ", normal_text_opts);
+	gui_edit(world_config->seed_edit_buf,  NUM_EDIT_BUFFER_LEN, num_edit_opts);
 	unsigned long long parsed_seed = parse_seed(world_config);
 	if (parsed_seed == ULLONG_MAX) {
-		gui_text(&stack, "World seed must be a number", err_text_opts);
+		gui_text("World seed must be a number", err_text_opts);
 	}
 	gui_stack_break(&stack);
 
 	if (parsed_seed == ULLONG_MAX) {
-		gui_text_center(&stack, "Fix errors above to continue",
+		gui_text_center("Fix errors above to continue",
 		                window.width / 2, err_text_opts);
 	} else {
 		world_config->opts.scale = world_config->scale;
 		world_config->opts.seed = parsed_seed;
-		world_config->next_btn_state = gui_btn(&stack, world_config->next_btn_state, "Next", btn_opts);
+		world_config->next_btn_state = gui_btn(world_config->next_btn_state, "Next", btn_opts);
 	}
 	gui_stack_break(&stack);
 
-	world_config->exit_btn_state = gui_btn(&stack, world_config->exit_btn_state, "Exit", btn_opts);
+	world_config->exit_btn_state = gui_btn(world_config->exit_btn_state, "Exit", btn_opts);
+
+	gui_container_pop();
 
 	window_submitframe();
 

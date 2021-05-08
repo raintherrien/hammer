@@ -32,8 +32,17 @@ typedef struct {
 } gui_stack;
 
 typedef struct {
-	enum  { GUI_STACK } type;
-	union { gui_stack stack; };
+	float hpadding;
+	float vpadding;
+	float xoffset;
+	float yoffset;
+	float zoffset;
+} gui_window;
+
+typedef struct gui_container_s {
+	struct gui_container_s *parent;
+	enum  { GUI_WINDOW, GUI_STACK } type;
+	union { gui_window window; gui_stack stack; };
 } gui_container;
 
 struct btn_opts {
@@ -141,44 +150,37 @@ struct text_opts {
                            .zoffset = 0
 
 gui_btn_state gui_btn(
-	gui_container  *container, /* optional */
 	gui_btn_state   prior_state,
 	const char     *text,
 	struct btn_opts opts
 );
 
 int gui_check(
-	gui_container    *container, /* optional */
 	int               prior_state,
 	struct check_opts opts
 );
 
 void gui_edit(
-	gui_container   *container, /* optional */
 	char            *text,
 	size_t           maxlen,
 	struct edit_opts opts
 );
 
 void gui_map(
-	gui_container  *container, /* optional */
 	GLuint          texture,
 	struct map_opts opts
 );
 
 void gui_rect(
-	gui_container   *container, /* optional */
 	struct rect_opts opts
 );
 
 void gui_text(
-	gui_container   *container, /* optional */
 	const char      *text,
 	struct text_opts opts
 );
 
 void gui_text_center(
-	gui_container   *container, /* optional */
 	const char      *text,
 	float            width,
 	struct text_opts opts
@@ -192,16 +194,31 @@ struct stack_opts {
 	float zoffset;
 };
 
+struct window_opts {
+	float hpadding;
+	float vpadding;
+	float xoffset;
+	float yoffset;
+	float zoffset;
+};
+
 #define STACK_OPTS_DEFAULTS .hpadding = 0, \
                             .vpadding = 0, \
                             .xoffset = 0, \
                             .yoffset = 0, \
                             .zoffset = 0
+#define WINDOW_OPTS_DEFAULT STACK_OPTS_DEFAULTS
 
+void gui_window_init(gui_container *, struct window_opts);
 void gui_stack_init(gui_container *, struct stack_opts);
 void gui_stack_break(gui_container *);
-void gui_container_add_element(gui_container *, float width, float height);
-void gui_container_get_offsets(gui_container *, float[3]);
+void gui_container_handle(gui_container *);
+void gui_container_push(gui_container *);
+void gui_container_pop(void);
+void gui_current_container_add_element(float width, float height);
+void gui_current_container_get_offsets(float[3]);
+gui_container gui_current_container_get_state(void);
+void gui_current_container_set_state(gui_container);
 
 float gui_char_width(float font_size);
 

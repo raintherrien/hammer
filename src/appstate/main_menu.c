@@ -140,11 +140,11 @@ main_menu_gl_frame(void *main_menu_)
 		.size    = btn_font_size
 	};
 
-	gui_text_center(NULL, "Hammer", window.width, title_opts);
-	gui_text_center(NULL, "A collection of bad practices and anti-patterns", window.width, subtitle_opts);
-	gui_text_center(NULL, main_menu->version_str, window.width, version_str_opts);
-	main_menu->generate_new_world_btn_state = gui_btn(NULL, main_menu->generate_new_world_btn_state, "Generate new world!", generate_new_world_btn_opts);
-	main_menu->exit_btn_state = gui_btn(NULL, main_menu->exit_btn_state, "Exit", exit_btn_opts);
+	gui_text_center("Hammer", window.width, title_opts);
+	gui_text_center("A collection of bad practices and anti-patterns", window.width, subtitle_opts);
+	gui_text_center(main_menu->version_str, window.width, version_str_opts);
+	main_menu->generate_new_world_btn_state = gui_btn(main_menu->generate_new_world_btn_state, "Generate new world!", generate_new_world_btn_opts);
+	main_menu->exit_btn_state = gui_btn(main_menu->exit_btn_state, "Exit", exit_btn_opts);
 
 	window_submitframe();
 

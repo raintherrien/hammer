@@ -51,15 +51,13 @@ gui_map_renderer_destroy(struct gui_map_renderer *renderer)
 }
 
 void
-gui_map(gui_container *container, GLuint texture, struct map_opts opts)
+gui_map(GLuint texture, struct map_opts opts)
 {
-	float container_offset[3] = { 0, 0, 0 };
-	if (container) {
-		float w = opts.xoffset + opts.width;
-		float h = opts.yoffset + opts.height;
-		gui_container_get_offsets(container, container_offset);
-		gui_container_add_element(container, w, h);
-	}
+	float container_offset[3];
+	float w = opts.xoffset + opts.width;
+	float h = opts.yoffset + opts.height;
+	gui_current_container_get_offsets(container_offset);
+	gui_current_container_add_element(w, h);
 	opts.xoffset += container_offset[0];
 	opts.yoffset += container_offset[1];
 	opts.zoffset += container_offset[2];

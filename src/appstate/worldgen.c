@@ -350,10 +350,6 @@ worldgen_gl_frame(void *wg_)
 		wg->map_tran_x -= window.motion_x / wg->map_zoom;
 		wg->map_tran_y -= window.motion_y / wg->map_zoom;
 	}
-	if (window.mouse_pressed[MOUSEBM]) {
-		wg->mouse_captured = 1;
-		window_lock_mouse();
-	}
 
 	unsigned font_size = 24;
 	unsigned border_padding = 32;
@@ -411,19 +407,20 @@ worldgen_gl_frame(void *wg_)
 		.yoffset = border_padding,
 		.zoffset = 1
 	});
+	gui_container_push(&stack);
 
-	gui_text(&stack, "World Generation", bold_text_opts);
+	gui_text("World Generation", bold_text_opts);
 	gui_stack_break(&stack);
-	gui_text(&stack, wg->lithosphere_progress_str, normal_text_opts);
+	gui_text(wg->lithosphere_progress_str, normal_text_opts);
 	gui_stack_break(&stack);
-	gui_text(&stack, wg->climate_progress_str, normal_text_opts);
+	gui_text(wg->climate_progress_str, normal_text_opts);
 	gui_stack_break(&stack);
-	gui_text(&stack, wg->stream_progress_str, normal_text_opts);
+	gui_text(wg->stream_progress_str, normal_text_opts);
 	gui_stack_break(&stack);
-	wg->paused = gui_check(&stack, wg->paused, check_opts);
-	gui_text(&stack, " Pause", normal_text_opts);
+	wg->paused = gui_check(wg->paused, check_opts);
+	gui_text(" Pause", normal_text_opts);
 	gui_stack_break(&stack);
-	wg->cancel_btn_state = gui_btn(&stack, wg->cancel_btn_state, "Cancel", btn_opts);
+	wg->cancel_btn_state = gui_btn(wg->cancel_btn_state, "Cancel", btn_opts);
 	gui_stack_break(&stack);
 
 	if (wg->focussed_img == wg->climate &&
@@ -443,14 +440,16 @@ worldgen_gl_frame(void *wg_)
 		         BIOME_TOOLTIP_STR_MAX_LEN,
 		         "Hovering over: %s",
 		         biome_name[b]);
-		gui_text(&stack, wg->biome_tooltip_str, normal_text_opts);
+		gui_text(wg->biome_tooltip_str, normal_text_opts);
 	}
+
+	gui_container_pop();
 
 	if (wg->focussed_img == wg->composite) {
 		/* wrap scale, normalize to lithosphere size */
 		float wx = LITHOSPHERE_LEN / (float)window.width;
 		float wy = LITHOSPHERE_LEN / (float)window.height;
-		gui_map(NULL, wg->composite_img, (struct map_opts) {
+		gui_map(wg->composite_img, (struct map_opts) {
 			MAP_OPTS_DEFAULTS,
 			.width  = window.width,
 			.height = window.height,
@@ -468,14 +467,15 @@ worldgen_gl_frame(void *wg_)
 			.height = 64,
 			.zoffset = 0.5f
 		};
-		gui_map(NULL, wg->composite_img, tab_opts);
+		gui_map(wg->composite_img, tab_opts);
 
-		if (window.mouse_pressed[MOUSEBL] &&
+		if (window.unhandled_mouse_press[MOUSEBL] &&
 		    window.mouse_x >= tab_opts.xoffset &&
 		    window.mouse_x <  tab_opts.xoffset + tab_opts.width &&
 		    window.mouse_y >= tab_opts.yoffset &&
 		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
 		{
+			window.unhandled_mouse_press[MOUSEBL] = 0;
 			wg->focussed_img = wg->composite;
 		}
 	}
@@ -484,7 +484,7 @@ worldgen_gl_frame(void *wg_)
 		/* wrap scale, normalize to lithosphere size */
 		float wx = LITHOSPHERE_LEN / (float)window.width;
 		float wy = LITHOSPHERE_LEN / (float)window.height;
-		gui_map(NULL, wg->stream_img, (struct map_opts) {
+		gui_map(wg->stream_img, (struct map_opts) {
 			MAP_OPTS_DEFAULTS,
 			.width  = window.width,
 			.height = window.height,
@@ -502,14 +502,15 @@ worldgen_gl_frame(void *wg_)
 			.height = 64,
 			.zoffset = 0.5f
 		};
-		gui_map(NULL, wg->stream_img, tab_opts);
+		gui_map(wg->stream_img, tab_opts);
 
-		if (window.mouse_pressed[MOUSEBL] &&
+		if (window.unhandled_mouse_press[MOUSEBL] &&
 		    window.mouse_x >= tab_opts.xoffset &&
 		    window.mouse_x <  tab_opts.xoffset + tab_opts.width &&
 		    window.mouse_y >= tab_opts.yoffset &&
 		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
 		{
+			window.unhandled_mouse_press[MOUSEBL] = 0;
 			wg->focussed_img = wg->stream;
 		}
 	}
@@ -518,7 +519,7 @@ worldgen_gl_frame(void *wg_)
 		/* wrap scale */
 		float wx = CLIMATE_LEN / (float)window.width;
 		float wy = CLIMATE_LEN / (float)window.height;
-		gui_map(NULL, wg->climate_img, (struct map_opts) {
+		gui_map(wg->climate_img, (struct map_opts) {
 			MAP_OPTS_DEFAULTS,
 			.width  = window.width,
 			.height = window.height,
@@ -536,14 +537,15 @@ worldgen_gl_frame(void *wg_)
 			.height = 64,
 			.zoffset = 0.5f
 		};
-		gui_map(NULL, wg->climate_img, tab_opts);
+		gui_map(wg->climate_img, tab_opts);
 
-		if (window.mouse_pressed[MOUSEBL] &&
+		if (window.unhandled_mouse_press[MOUSEBL] &&
 		    window.mouse_x >= tab_opts.xoffset &&
 		    window.mouse_x <  tab_opts.xoffset + tab_opts.width &&
 		    window.mouse_y >= tab_opts.yoffset &&
 		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
 		{
+			window.unhandled_mouse_press[MOUSEBL] = 0;
 			wg->focussed_img = wg->climate;
 		}
 	}
@@ -552,7 +554,7 @@ worldgen_gl_frame(void *wg_)
 		/* wrap scale */
 		float wx = LITHOSPHERE_LEN / (float)window.width;
 		float wy = LITHOSPHERE_LEN / (float)window.height;
-		gui_map(NULL, wg->lithosphere_img, (struct map_opts) {
+		gui_map(wg->lithosphere_img, (struct map_opts) {
 			MAP_OPTS_DEFAULTS,
 			.width  = window.width,
 			.height = window.height,
@@ -570,16 +572,24 @@ worldgen_gl_frame(void *wg_)
 			.height = 64,
 			.zoffset = 0.5f
 		};
-		gui_map(NULL, wg->lithosphere_img, tab_opts);
+		gui_map(wg->lithosphere_img, tab_opts);
 
-		if (window.mouse_pressed[MOUSEBL] &&
+		if (window.unhandled_mouse_press[MOUSEBL] &&
 		    window.mouse_x >= tab_opts.xoffset &&
 		    window.mouse_x <  tab_opts.xoffset + tab_opts.width &&
 		    window.mouse_y >= tab_opts.yoffset &&
 		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
 		{
+			window.unhandled_mouse_press[MOUSEBL] = 0;
 			wg->focussed_img = wg->lithosphere;
 		}
+	}
+
+	/* Handle after UI has a chance to steal mouse event */
+	if (window.unhandled_mouse_press[MOUSEBM]) {
+		window.unhandled_mouse_press[MOUSEBM] = 0;
+		wg->mouse_captured = 1;
+		window_lock_mouse();
 	}
 
 	window_submitframe();

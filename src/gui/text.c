@@ -117,8 +117,7 @@ gui_text_render(struct gui_text_renderer *renderer,
 }
 
 void
-gui_text(gui_container   *container,
-         const char      *text,
+gui_text(const char      *text,
          struct text_opts opts)
 {
 	struct gui_text_renderer *renderer = &window.gui_text_renderer;
@@ -126,12 +125,10 @@ gui_text(gui_container   *container,
 	float char_width = opts.size * renderer->font_regular.character_ratio;
 	size_t text_len = strlen(text);
 
-	float container_offset[3] = { 0, 0, 0 };
-	if (container) {
-		float w = text_len * char_width;
-		gui_container_get_offsets(container, container_offset);
-		gui_container_add_element(container, w, opts.size);
-	}
+	float container_offset[3];
+	float w = text_len * char_width;
+	gui_current_container_get_offsets(container_offset);
+	gui_current_container_add_element(w, opts.size);
 	opts.xoffset += container_offset[0];
 	opts.yoffset += container_offset[1];
 	opts.zoffset += container_offset[2];
@@ -158,15 +155,14 @@ gui_text(gui_container   *container,
 }
 
 void
-gui_text_center(gui_container   *container,
-                const char      *text,
+gui_text_center(const char      *text,
                 float            width,
                 struct text_opts opts)
 {
 	size_t text_len = strlen(text);
 	float ww = gui_char_width(opts.size);
 	opts.xoffset += (width - text_len * ww) / 2;
-	gui_text(container, text, opts);
+	gui_text(text, opts);
 }
 
 float

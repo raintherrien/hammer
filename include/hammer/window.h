@@ -30,6 +30,8 @@ struct window {
 	struct gui_text_renderer gui_text_renderer;
 	struct gui_map_renderer gui_map_renderer;
 	struct gui_rect_renderer gui_rect_renderer;
+	gui_container  gui_default_window;
+	gui_container *current_container;
 
 	SDL_Window   *handle;
 	const Uint8  *keydown;
@@ -47,7 +49,7 @@ struct window {
 	int           scroll;
 	int           width, height;
 	int           mouse_held[MOUSEB_COUNT];
-	int           mouse_pressed[MOUSEB_COUNT];
+	int           unhandled_mouse_press[MOUSEB_COUNT];
 	int           should_close;
 	char          text_input[MAX_TEXT_INPUT_LEN];
 };

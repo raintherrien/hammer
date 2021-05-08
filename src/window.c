@@ -160,7 +160,8 @@ window_create(void)
 	}
 	window.current_frame_id = FRAMES_IN_FLIGHT;
 	window.current_frame = window.frames;
-
+	gui_window_init(&window.gui_default_window, (struct window_opts) { WINDOW_OPTS_DEFAULT });
+	window.current_container = &window.gui_default_window;
 	window.should_close = 0;
 }
 
@@ -211,9 +212,9 @@ window_startframe(void)
 	window.motion_y = 0;
 	window.scroll = 0;
 	window.text_input_len = 0;
-	window.mouse_pressed[MOUSEBL] = 0;
-	window.mouse_pressed[MOUSEBR] = 0;
-	window.mouse_pressed[MOUSEBM] = 0;
+	window.unhandled_mouse_press[MOUSEBL] = 0;
+	window.unhandled_mouse_press[MOUSEBR] = 0;
+	window.unhandled_mouse_press[MOUSEBM] = 0;
 	memset(window.text_input, 0, MAX_TEXT_INPUT_LEN * sizeof(*window.text_input));
 
 	vector_clear(&window.frame_events);
@@ -240,11 +241,11 @@ window_startframe(void)
 			break;
 		case SDL_MOUSEBUTTONDOWN:
 			if (e.button.button == SDL_BUTTON_LEFT)
-				window.mouse_pressed[MOUSEBL] = 1;
+				window.unhandled_mouse_press[MOUSEBL] = 1;
 			if (e.button.button == SDL_BUTTON_RIGHT)
-				window.mouse_pressed[MOUSEBR] = 1;
+				window.unhandled_mouse_press[MOUSEBR] = 1;
 			if (e.button.button == SDL_BUTTON_MIDDLE)
-				window.mouse_pressed[MOUSEBM] = 1;
+				window.unhandled_mouse_press[MOUSEBM] = 1;
 			break;
 		case SDL_MOUSEMOTION:
 			window.motion_x += e.motion.xrel;
