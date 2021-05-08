@@ -187,7 +187,7 @@ temperature_init(struct climate *c)
 		if (h < 0)
 			temp *= 1 - (h*h);
 		else
-			temp *= 1 - powf(h / 3.0f, 2);
+			temp *= 1 - powf(h / 5.0f, 2);
 		temp = CLAMP(temp, 0, 1);
 		c->inv_temp_init[i] = 1 - temp;
 	}

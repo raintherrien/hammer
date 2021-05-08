@@ -28,6 +28,8 @@ struct stream_node {
 	float x;
 	float y;
 	float height;
+	float temp;
+	float precip;
 	float uplift;
 	float drainage;
 	unsigned char unwound;

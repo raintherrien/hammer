@@ -610,7 +610,7 @@ worldgen_gl_blit_lithosphere_image(void *wg_)
 		                   l->mass[i].igneous;
 		if (total_mass > TECTONIC_CONTINENT_MASS) {
 			float h = total_mass - TECTONIC_CONTINENT_MASS;
-			img[i*3+0] = 30 + 95 * MIN(2,h) / 1.5f;
+			img[i*3+0] = 30 + 95 * MIN(4,h) / 3;
 			img[i*3+1] = 125;
 			img[i*3+2] = 30;
 		} else {

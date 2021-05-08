@@ -25,11 +25,10 @@
 
 #define STREAM_TIMESTEP 0.01f
 #define POISSON_RADIUS 4.0f
-#define POISSON_AREA (POISSON_RADIUS * POISSON_RADIUS * M_PI)
 
 #define NO_NODE ((uint32_t)-1)
 
-static uint32_t assign_tree(struct stream_graph *g, uint32_t nid);
+static void assign_tree(struct stream_graph *g, uint32_t nid, uint32_t **upstream);
 static uint32_t next_tree(struct stream_graph *g);
 static void flow_drainage_area(struct stream_graph *g, uint32_t ni);
 static void stream_power(struct stream_graph *g, uint32_t ni);
@@ -106,6 +105,8 @@ stream_graph_create(struct stream_graph *g,
 		n->x = pt[i*2+0];
 		n->y = pt[i*2+1];
 		n->height = 0;
+		n->temp = 1 - lerp_climate_layer(climate->inv_temp, n->x, n->y, size / (float)CLIMATE_LEN);
+		n->precip = lerp_climate_layer(climate->precipitation, n->x, n->y, size / (float)CLIMATE_LEN);
 		n->uplift = lerp_climate_layer(climate->uplift, n->x, n->y, size / (float)CLIMATE_LEN);
 	}
 
@@ -209,17 +210,41 @@ stream_graph_update(struct stream_graph *g)
 			g->arcs[src].receiver = dst;
 			continue;
 		}
-		struct stream_node * restrict dstn = &g->nodes[dst];
-		struct stream_node * restrict rcvn = &g->nodes[g->arcs[src].receiver];
+		struct stream_node *dstn = &g->nodes[dst];
+		struct stream_node *rcvn = &g->nodes[g->arcs[src].receiver];
 		if (rcvn->height > dstn->height)
 			g->arcs[src].receiver = dst;
 	}
 
+	/* Identify roots */
+	for (size_t ni = 0; ni < g->node_count; ++ ni) {
+		if (g->arcs[ni].receiver == NO_NODE) {
+			struct stream_node *n = &g->nodes[ni];
+			uint32_t t = next_tree(g);
+			n->tree = t;
+			int is_lake = n->height < TECTONIC_CONTINENT_MASS;
+			g->trees[t] = (struct stream_tree) {
+				.border_edges = NULL,
+				.lake_receiver = NO_NODE,
+				.node_receiver = NO_NODE,
+				.root = ni,
+				.pass_to_receiver = is_lake ? 0 : FLT_MAX,
+				.in_queue = 0,
+				.is_lake = is_lake
+			};
+		}
+	}
+
+	uint32_t *upstream = NULL;
+	for (size_t ni = 0; ni < g->node_count; ++ ni) {
+		if (g->arcs[ni].receiver != NO_NODE) {
+			assign_tree(g, ni, &upstream);
+		}
+	}
+	vector_free(&upstream);
+
 	/* Travel down to root to determine or create tree, identify lakes */
 	uint32_t *border_trees = NULL; /* ring buffer */
-	for (size_t ni = 0; ni < g->node_count; ++ ni)
-		assign_tree(g, ni);
-
 	uint32_t tree_count = vector_size(g->trees);
 	for (uint32_t ti = 0; ti < tree_count; ++ ti) {
 		struct stream_tree *t = &g->trees[ti];
@@ -266,16 +291,16 @@ stream_graph_update(struct stream_graph *g)
 			}
 			/* Determine whether other flows into this lake */
 			struct stream_tree *n = &g->trees[othr_node->tree];
-			float pass = lake_tree->pass_to_receiver +
-			             MAX(lake_node->height, othr_node->height);
+			float pass = MAX(lake_tree->pass_to_receiver,
+			                 MAX(lake_node->height, othr_node->height));
 			if (pass < n->pass_to_receiver) {
 				n->pass_to_receiver = pass;
 				n->lake_receiver = li;
 				n->node_receiver = lake_nid;
-			}
-			if (!n->in_queue) {
-				n->in_queue = 1;
-				ring_push(&border_trees, othr_node->tree);
+				if (!n->in_queue) {
+					n->in_queue = 1;
+					ring_push(&border_trees, othr_node->tree);
+				}
 			}
 		}
 		vector_free(&lake_tree->border_edges);
@@ -299,9 +324,9 @@ stream_graph_update(struct stream_graph *g)
 		struct stream_node *src = &g->nodes[ni];
 		struct stream_node *dst = &g->nodes[arc->receiver];
 		float d = src->height - dst->height;
-		const float talus = 0.2f;
+		const float talus = 0.3f + src->precip * (1 - src->temp) / 2;
 		if (d > talus) {
-			float xfer = (d - talus) / 2;
+			float xfer = (d - talus) / 4;
 			dst->height += xfer;
 			src->height -= xfer;
 		}
@@ -327,34 +352,23 @@ stream_graph_update(struct stream_graph *g)
 	vector_free(&depth_queue);
 }
 
-static uint32_t
-assign_tree(struct stream_graph *g, uint32_t nid)
+static void
+assign_tree(struct stream_graph *g, uint32_t nid, uint32_t **upstream)
 {
 	struct stream_node *n = &g->nodes[nid];
-
-	if (n->tree != NO_NODE)
-		return n->tree;
-
-	struct stream_arc *arc = &g->arcs[nid];
-	if (arc->receiver == NO_NODE) {
-		uint32_t t = next_tree(g);
-		n->tree = t;
-		int is_lake = n->height < TECTONIC_CONTINENT_MASS;
-		g->trees[t] = (struct stream_tree) {
-			.border_edges = NULL,
-			.lake_receiver = NO_NODE,
-			.node_receiver = NO_NODE,
-			.root = nid,
-			.pass_to_receiver = is_lake ? 0 : FLT_MAX,
-			.in_queue = 0,
-			.is_lake = is_lake
-		};
-		return t;
+	/* Traverse arcs to first downstream node with tree */
+	while (n->tree == NO_NODE) {
+		vector_push(upstream, nid);
+		nid = g->arcs[nid].receiver;
+		n = &g->nodes[nid];
 	}
 
-	uint32_t t = assign_tree(g, arc->receiver);
-	n->tree = t;
-	return t;
+	/* Assign root tree to upstream */
+	size_t upstream_size = vector_size(*upstream);
+	for (size_t i = 0; i < upstream_size; ++ i)
+		g->nodes[(*upstream)[i]].tree = n->tree;
+
+	vector_clear(upstream);
 }
 
 static uint32_t
@@ -369,8 +383,12 @@ static void
 flow_drainage_area(struct stream_graph *g, uint32_t ni)
 {
 	struct stream_node *n = &g->nodes[ni];
-	/* Reduce drainage below ocean level */
-	n->drainage += POISSON_AREA * MIN(1, n->height / TECTONIC_CONTINENT_MASS);
+	/*
+	 * Reduce drainage below ocean level.
+	 * Note that since we use a Poisson distribution there's little point
+	 * calculating the drainage area of each individual polygon.
+	 */
+	n->drainage += 10 + 15 * n->precip * MIN(1, n->height / TECTONIC_CONTINENT_MASS);
 	uint32_t child = g->arcs[ni].receiver;
 	if (child != NO_NODE)
 		g->nodes[child].drainage += n->drainage;

@@ -431,6 +431,7 @@ lithosphere_init_mass(struct lithosphere *l)
 		opensimplex_alloc(WELL512i(l->rng))
 	};
 	const float wf = 0.25f;
+	const float sf = 0.5f;
 	const float frq = 9.5f;
 
 	memset(l->mass, 0, LITHOSPHERE_AREA * sizeof(*l->mass));
@@ -461,15 +462,19 @@ lithosphere_init_mass(struct lithosphere *l)
 		float ny = sinf(v*2*M_PI)*frq/(2*M_PI);
 		float nz = sinf(u*2*M_PI)*frq/(2*M_PI);
 		float nw = cosf(v*2*M_PI)*frq/(2*M_PI);
-		nx += opensimplex4_fbm(n[0], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
-		ny += opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
-		nz += opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
-		nw += opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
-		l->mass[i].igneous = opensimplex4_fbm(n[4], nx, ny, nz, nw, 4, 2);
+		float nwx = nx + opensimplex4_fbm(n[0], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		float nwy = ny + opensimplex4_fbm(n[1], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		float nwz = nz + opensimplex4_fbm(n[2], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		float nww = nw + opensimplex4_fbm(n[3], nx*wf, ny*wf, nz*wf, nw*wf, 2, 4);
+		l->mass[i].igneous = opensimplex4_fbm(n[4], nwx, nwy, nwz, nww, 4, 2);
 		l->mass[i].igneous = 1.2f + 1.5f * l->mass[i].igneous;
+		l->mass[i].sediment = 0.25f + 0.25f * opensimplex4(n[0], nx*sf, ny*sf, nz*sf, nw*sf);
 	}
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
-		if (l->mass[i].igneous < TECTONIC_OCEAN_FLOOR_MASS)
+		float total_mass = l->mass[i].sediment +
+		                   l->mass[i].metamorphic +
+		                   l->mass[i].igneous;
+		if (total_mass < TECTONIC_OCEAN_FLOOR_MASS)
 			l->mass[i].igneous = TECTONIC_OCEAN_FLOOR_MASS;
 		/* Erode to sediment relative to "shore height" */
 		const float shoreheight = 0.2f;
