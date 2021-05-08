@@ -13,8 +13,6 @@
 #include "hammer/worldgen/stream.h"
 #include "hammer/worldgen/tectonic.h"
 
-#include "hammer/image.h" // xxx
-
 #define PROGRESS_STR_MAX_LEN 64
 #define BIOME_TOOLTIP_STR_MAX_LEN 64
 
@@ -27,6 +25,7 @@ struct worldgen_appstate {
 	struct lithosphere  *lithosphere;
 	struct climate      *climate;
 	struct stream_graph *stream;
+	void                *composite;
 	void                *focussed_img;
 	gui_btn_state        cancel_btn_state;
 	unsigned long        stream_size;
@@ -37,6 +36,7 @@ struct worldgen_appstate {
 	GLuint               lithosphere_img;
 	GLuint               climate_img;
 	GLuint               stream_img;
+	GLuint               composite_img;
 	int                  mouse_captured;
 	int                  paused;
 	char                 lithosphere_progress_str[PROGRESS_STR_MAX_LEN];
@@ -54,10 +54,12 @@ static int worldgen_gl_frame(void *);
 static int worldgen_gl_blit_lithosphere_image(void *);
 static int worldgen_gl_blit_climate_image(void *);
 static int worldgen_gl_blit_stream_image(void *);
+static int worldgen_gl_blit_composite_image(void *);
 
 static void viz_lithosphere_loop(DL_TASK_ARGS);
 static void viz_climate_loop(DL_TASK_ARGS);
 static void viz_stream_loop(DL_TASK_ARGS);
+static void viz_composite_loop(DL_TASK_ARGS);
 
 dltask *
 worldgen_appstate_alloc_detached(struct world_opts *world_opts)
@@ -74,6 +76,7 @@ worldgen_appstate_alloc_detached(struct world_opts *world_opts)
 	wg->lithosphere = NULL;
 	wg->climate = NULL;
 	wg->stream = NULL;
+	wg->composite = NULL;
 	wg->stream_size = 1 << (9 + wg->world_opts.scale);
 
 	return &wg->task;
@@ -141,8 +144,7 @@ viz_lithosphere_loop(DL_TASK_ARGS)
 		wg->climate = xmalloc(sizeof(*wg->climate));
 		wg->focussed_img = wg->climate;
 		climate_create(wg->climate, wg->lithosphere);
-		dlcontinuation(&wg->task, viz_climate_loop);
-		dlasync(&wg->task);
+		dltail(&wg->task, viz_climate_loop);
 		return;
 	}
 
@@ -171,8 +173,7 @@ viz_climate_loop(DL_TASK_ARGS)
 		wg->stream = xmalloc(sizeof(*wg->stream));
 		wg->focussed_img = wg->stream;
 		stream_graph_create(wg->stream, wg->climate, wg->world_opts.seed, wg->stream_size);
-		dlcontinuation(&wg->task, viz_stream_loop);
-		dlasync(&wg->task);
+		dltail(&wg->task, viz_stream_loop);
 		return;
 	}
 
@@ -197,7 +198,12 @@ viz_stream_loop(DL_TASK_ARGS)
 	}
 
 	if (wg->stream->generation >= STREAM_GRAPH_GENERATIONS) {
-		/* XXX Next step */
+		/* Kick off composite loop */
+		wg->composite = wg; /* xxx any data */
+		wg->focussed_img = wg->composite;
+		glthread_execute(worldgen_gl_blit_composite_image, wg);
+		dltail(&wg->task, viz_composite_loop);
+		return;
 	} else {
 		if (!wg->paused) {
 			stream_graph_update(wg->stream);
@@ -206,6 +212,21 @@ viz_stream_loop(DL_TASK_ARGS)
 	}
 
 	dltail(&wg->task, viz_stream_loop);
+}
+
+static void
+viz_composite_loop(DL_TASK_ARGS)
+{
+	DL_TASK_ENTRY(struct worldgen_appstate, wg, task);
+
+	if (glthread_execute(worldgen_gl_frame, wg) ||
+	    wg->cancel_btn_state == GUI_BTN_RELEASED)
+	{
+		dltail(&wg->task, worldgen_exit);
+		return;
+	}
+
+	dltail(&wg->task, viz_composite_loop);
 }
 
 static int
@@ -263,6 +284,22 @@ worldgen_gl_setup(void *wg_)
 	glTextureParameteri(wg->stream_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glGenerateTextureMipmap(wg->stream_img);
 
+	glGenTextures(1, &wg->composite_img);
+	glBindTexture(GL_TEXTURE_2D, wg->composite_img);
+	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
+	                            GL_RGB8,
+	                            wg->stream_size, wg->stream_size,
+	                            0, /* border */
+	                            GL_RGB,
+	                            GL_UNSIGNED_BYTE,
+	                            NULL);
+	glTextureParameteri(wg->composite_img, GL_TEXTURE_MAX_LEVEL, 0);
+	glTextureParameteri(wg->composite_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTextureParameteri(wg->composite_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTextureParameteri(wg->composite_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTextureParameteri(wg->composite_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glGenerateTextureMipmap(wg->composite_img);
+
 	return 0;
 }
 
@@ -279,7 +316,7 @@ worldgen_gl_frame(void *wg_)
 		wg->map_zoom = wg->min_map_zoom;
 	}
 	if (window.scroll != 0) {
-		float delta = window.scroll / 100.0f;
+		float delta = window.scroll / 10.0f;
 		if (wg->map_zoom + delta < 10 &&
 		    wg->map_zoom + delta > wg->min_map_zoom)
 		{
@@ -409,10 +446,44 @@ worldgen_gl_frame(void *wg_)
 		gui_text(&stack, wg->biome_tooltip_str, normal_text_opts);
 	}
 
+	if (wg->focussed_img == wg->composite) {
+		/* wrap scale, normalize to lithosphere size */
+		float wx = LITHOSPHERE_LEN / (float)window.width;
+		float wy = LITHOSPHERE_LEN / (float)window.height;
+		gui_map(NULL, wg->composite_img, (struct map_opts) {
+			MAP_OPTS_DEFAULTS,
+			.width  = window.width,
+			.height = window.height,
+			.scale_x = wg->map_zoom * wx,
+			.scale_y = wg->map_zoom * wy,
+			.tran_x = wg->map_tran_x / window.width,
+			.tran_y = wg->map_tran_y / window.height
+		});
+	} else if (wg->composite) {
+		const struct map_opts tab_opts = {
+			MAP_OPTS_DEFAULTS,
+			.xoffset = window.width - border_padding - 256,
+			.yoffset = border_padding,
+			.width  = 64,
+			.height = 64,
+			.zoffset = 0.5f
+		};
+		gui_map(NULL, wg->composite_img, tab_opts);
+
+		if (window.mouse_pressed[MOUSEBL] &&
+		    window.mouse_x >= tab_opts.xoffset &&
+		    window.mouse_x <  tab_opts.xoffset + tab_opts.width &&
+		    window.mouse_y >= tab_opts.yoffset &&
+		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
+		{
+			wg->focussed_img = wg->composite;
+		}
+	}
+
 	if (wg->focussed_img == wg->stream) {
 		/* wrap scale, normalize to lithosphere size */
-		float wx = wg->stream->size / (1 << (wg->world_opts.scale-1)) / (float)window.width;
-		float wy = wg->stream->size / (1 << (wg->world_opts.scale-1)) / (float)window.height;
+		float wx = LITHOSPHERE_LEN / (float)window.width;
+		float wy = LITHOSPHERE_LEN / (float)window.height;
 		gui_map(NULL, wg->stream_img, (struct map_opts) {
 			MAP_OPTS_DEFAULTS,
 			.width  = window.width,
@@ -559,29 +630,7 @@ worldgen_gl_blit_climate_image(void *wg_)
 		enum biome b = biome_class(elev, temp, precip);
 		memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
 	}
-/* xxx composite?
-	} else {
-		for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
-			float temperature = 1 - viz->climate.inv_temp[i];
-			float freezegrad = 1 - CLAMP(2 * (temperature - CLIMATE_ARCTIC_MAX_TEMP), 0, 1);
-			if (viz->climate.uplift[i] > TECTONIC_CONTINENT_MASS) {
-				float h = viz->climate.uplift[i] - TECTONIC_CONTINENT_MASS;
-				img[i*3+0] = 148 - 70 * MIN(1,viz->climate.precipitation[i]);
-				img[i*3+1] = 148 - 20 * h;
-				img[i*3+2] = 77;
-				img[i*3+0] += (255 - img[i*3+0]) * freezegrad;
-				img[i*3+1] += (255 - img[i*3+1]) * freezegrad;
-				img[i*3+2] += (255 - img[i*3+2]) * freezegrad;
-			} else {
-				float temprg = (150-50) * freezegrad;
-				float elevgrad = 100 * viz->climate.uplift[i] / TECTONIC_CONTINENT_MASS;
-				img[i*3+0] = 50 + temprg;
-				img[i*3+1] = 50 + MAX(temprg,elevgrad);
-				img[i*3+2] = 168 + (255-168) * freezegrad;
-			}
-		}
-	}
-*/
+
 	glTextureSubImage2D(wg->climate_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
@@ -595,7 +644,7 @@ worldgen_gl_blit_climate_image(void *wg_)
 
 static void
 putline(GLubyte *rgb, unsigned size,
-        GLubyte r, GLubyte g, GLubyte b,
+        float r, float g, float b, float alpha,
         long x0, long y0, long x1, long y1)
 {
 	/* Bresenham's line algorithm */
@@ -611,9 +660,9 @@ putline(GLubyte *rgb, unsigned size,
 		long wx = (x0 + size) & (size - 1);
 		long wy = (y0 + size) & (size - 1);
 		size_t i = 3 * (wy * size + wx);
-		rgb[i+0] = r;
-		rgb[i+1] = g;
-		rgb[i+2] = b;
+		rgb[i+0] = rgb[i+0] + (r - rgb[i+0]) * alpha;
+		rgb[i+1] = rgb[i+1] + (g - rgb[i+1]) * alpha;
+		rgb[i+2] = rgb[i+2] + (b - rgb[i+2]) * alpha;
 		if (x0 == x1 && y0 == y1)
 			break;
 		e2 = 2 * de;
@@ -681,19 +730,155 @@ worldgen_gl_blit_stream_image(void *wg_)
 		GLubyte c[3];
 		swizzle(src->tree, c);
 		putline(img, s->size,
-			c[0], c[1], c[2],
+			c[0], c[1], c[2], 1.0f,
 			srcx, srcy,
 			dstx, dsty);
 	}
 
-	/* XXX Debug */
-	if (s->generation == 100) {
-		char filename[64];
-		snprintf(filename, 64, "stream%03d.png", s->generation);
-		write_rgb(filename, img, s->size, s->size);
+	glTextureSubImage2D(wg->stream_img,
+	                    0, /* level */
+	                    0, 0, /* x,y offset */
+	                    s->size, s->size, /* w,h */
+	                    GL_RGB, GL_UNSIGNED_BYTE,
+	                    img);
+	free(img);
+
+	return 0;
+}
+
+static void
+baryw(struct stream_node *n[3], float w[3], long x, long y)
+{
+	float d = 1 / ((n[1]->y - n[2]->y) * (n[0]->x - n[2]->x) +
+	               (n[2]->x - n[1]->x) * (n[0]->y - n[2]->y));
+	w[0] = d * ((n[1]->y - n[2]->y) * (x - n[2]->x) +
+	            (n[2]->x - n[1]->x) * (y - n[2]->y));
+	w[1] = d * ((n[2]->y - n[0]->y) * (x - n[2]->x) +
+	            (n[0]->x - n[2]->x) * (y - n[2]->y));
+	w[2] = 1 - w[0] - w[1];
+}
+
+static int
+worldgen_gl_blit_composite_image(void *wg_)
+{
+	struct worldgen_appstate *wg = wg_;
+	struct stream_graph *s = wg->stream;
+	GLubyte *img = xmalloc(s->size * s->size * sizeof(*img) * 3);
+
+	size_t tri_count = vector_size(s->tris);
+	const float cs = wg->stream_size / CLIMATE_LEN;
+	for (size_t ti = 0; ti < tri_count; ++ ti) {
+		struct stream_tri *tri = &s->tris[ti];
+		struct stream_node *n[3] = {
+			&s->nodes[tri->a],
+			&s->nodes[tri->b],
+			&s->nodes[tri->c]
+		};
+		float max_lake = 0;
+		for (size_t i = 0; i < 3; ++ i)
+			max_lake = MAX(max_lake, s->trees[n[i]->tree].pass_to_receiver);
+		long l = floorf(MIN(n[0]->x, MIN(n[1]->x, n[2]->x)));
+		long r =  ceilf(MAX(n[0]->x, MAX(n[1]->x, n[2]->x)));
+		long t = floorf(MIN(n[0]->y, MIN(n[1]->y, n[2]->y)));
+		long b =  ceilf(MAX(n[0]->y, MAX(n[1]->y, n[2]->y)));
+		if (labs(l - r) > 32 || labs(t - b) > 32)
+			continue; /* XXX Don't handle wrapping */
+		for (long y = t; y <= b; ++ y)
+		for (long x = l; x <= r; ++ x) {
+			float w[3] = { 0, 0, 0 };
+			baryw(n, w, x, y);
+			if (w[0] < 0 || w[1] < 0 || w[2] < 0)
+				continue;
+			/* fast wrap since size is power of two */
+			long wx = (x + s->size) & (s->size - 1);
+			long wy = (y + s->size) & (s->size - 1);
+			size_t i = wy * s->size + wx;
+			float temp = 1 - lerp_climate_layer(wg->climate->inv_temp, wx, wy, cs);
+			float precip = lerp_climate_layer(wg->climate->precipitation, wx, wy, cs);
+			float elev = n[0]->height * w[0] + n[1]->height * w[1] + n[2]->height * w[2];
+			if (elev < max_lake) {
+				img[i*3+0] = biome_color[BIOME_OCEAN][0];
+				img[i*3+1] = biome_color[BIOME_OCEAN][1];
+				img[i*3+2] = biome_color[BIOME_OCEAN][2];
+			} else {
+				enum biome b = biome_class(elev, temp, precip);
+				memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
+			}
+			float shading;
+			/* Very basic diffuse factor [0.25,1] */
+			{
+				/* diagonal 45 degrees and down */
+				const float lightdir[3] = {
+					-1 * +0.57735026919f,
+					-1 * +0.57735026919f,
+					-1 * -0.57735026919f
+				};
+				float normal[3];
+				float a[3] = {
+					n[2]->x - n[1]->x,
+					n[2]->y - n[1]->y,
+					5 * (n[2]->height - n[1]->height)
+				};
+				float b[3] = {
+					n[1]->x - n[0]->x,
+					n[1]->y - n[0]->y,
+					5 * (n[1]->height - n[0]->height)
+				};
+				normal[0] = a[1] * b[2] - a[2] * b[1];
+				normal[1] = a[2] * b[0] - a[0] * b[2];
+				normal[2] = a[0] * b[1] - a[1] * b[0];
+				float imag = 1 / sqrtf(normal[0] * normal[0] +
+				                       normal[1] * normal[1] +
+				                       normal[2] * normal[2]);
+				normal[0] *= imag;
+				normal[1] *= imag;
+				normal[2] *= imag;
+				shading = normal[0] * lightdir[0] +
+				          normal[1] * lightdir[1] +
+				          normal[2] * lightdir[2];
+				shading = shading / (2 / 0.75f) + 0.625f;
+			}
+			img[i*3+0] *= shading;
+			img[i*3+1] *= shading;
+			img[i*3+2] *= shading;
+		}
 	}
 
-	glTextureSubImage2D(wg->stream_img,
+	for (size_t i = 0; i < s->node_count; ++ i) {
+		struct stream_arc *arc = &s->arcs[i];
+		struct stream_node *src = &s->nodes[i];
+
+		/* Do not render in ocean or lake */
+		if (arc->receiver >= s->node_count ||
+		    src->height < TECTONIC_CONTINENT_MASS ||
+		    src->height < s->trees[src->tree].pass_to_receiver)
+			continue;
+
+		struct stream_node *dst = &s->nodes[arc->receiver];
+		float srcx = src->x;
+		float srcy = src->y;
+		float dstx = dst->x;
+		float dsty = dst->y;
+		float deltax = fabsf(srcx - dstx);
+		float deltay = fabsf(srcy - dsty);
+		/* Wrapping hack to keep lines from crossing image */
+		int wrapx = deltax > (float)s->size - deltax;
+		int wrapy = deltay > (float)s->size - deltay;
+		if (wrapx && dstx > srcx)
+			srcx += s->size;
+		else if (wrapx && dstx < srcx)
+			dstx += s->size;
+		if (wrapy && dsty > srcy)
+			srcy += s->size;
+		else if (wrapy && dsty < srcy)
+			dsty += s->size;
+		putline(img, s->size,
+			0, 0, 166, CLAMP(dst->drainage / 10000.0f, 0, 1),
+			srcx, srcy,
+			dstx, dsty);
+	}
+
+	glTextureSubImage2D(wg->composite_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
 	                    s->size, s->size, /* w,h */

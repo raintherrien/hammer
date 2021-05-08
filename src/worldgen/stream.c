@@ -29,7 +29,6 @@
 
 #define NO_NODE ((uint32_t)-1)
 
-static void node_lerp_uplift(const struct climate *, unsigned long size, struct stream_node *);
 static uint32_t assign_tree(struct stream_graph *g, uint32_t nid);
 static uint32_t next_tree(struct stream_graph *g);
 static void flow_drainage_area(struct stream_graph *g, uint32_t ni);
@@ -107,7 +106,7 @@ stream_graph_create(struct stream_graph *g,
 		n->x = pt[i*2+0];
 		n->y = pt[i*2+1];
 		n->height = 0;
-		node_lerp_uplift(climate, size, n);
+		n->uplift = lerp_climate_layer(climate->uplift, n->x, n->y, size / (float)CLIMATE_LEN);
 	}
 
 	/*
@@ -284,8 +283,6 @@ stream_graph_update(struct stream_graph *g)
 
 	ring_free(&border_trees);
 
-	/* XXX Sum total pass height for lake surface height info */
-
 	/* Create arcs from passes */
 	for (uint32_t ti = 0; ti < tree_count; ++ ti) {
 		struct stream_tree *t = &g->trees[ti];
@@ -328,28 +325,6 @@ stream_graph_update(struct stream_graph *g)
 		stream_power(g, depth_queue[i]);
 
 	vector_free(&depth_queue);
-}
-
-static void
-node_lerp_uplift(const struct climate *c,
-                 unsigned long size,
-                 struct stream_node *n)
-{
-	float scale = size / (float)CLIMATE_LEN;
-	assert(scale >= 1);
-	float cx = n->x / scale;
-	float cy = n->y / scale;
-	long cxf = wrapidx(floorf(cx), CLIMATE_LEN);
-	long cxc = wrapidx( ceilf(cx), CLIMATE_LEN);
-	long cyf = wrapidx(floorf(cy), CLIMATE_LEN);
-	long cyc = wrapidx( ceilf(cy), CLIMATE_LEN);
-	float uff = c->uplift[cyf * CLIMATE_LEN + cxf];
-	float ufc = c->uplift[cyf * CLIMATE_LEN + cxc];
-	float ucf = c->uplift[cyc * CLIMATE_LEN + cxf];
-	float ucc = c->uplift[cyc * CLIMATE_LEN + cxc];
-	float uf = uff + (ufc - uff) * (cx - cxf);
-	float uc = ucf + (ucc - ucf) * (cx - cxf);
-	n->uplift = uf + (uc - uf) * (cy - cyf);
 }
 
 static uint32_t
