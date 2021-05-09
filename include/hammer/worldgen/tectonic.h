@@ -92,15 +92,15 @@ struct tectonic_opts {
 	.rift_mass        = 0.9f,     \
 	.volcano_mass     = 15.0f,    \
 	.volcano_chance   = 0.01f,    \
-	.continent_talus  = 0.1f,     \
-	.ocean_talus      = 0.05f,    \
+	.continent_talus  = 0.05f,    \
+	.ocean_talus      = 0.025f,   \
 	.generation_steps = 100,      \
 	.generations      = 2,        \
 	.min_plates       = 10,       \
 	.max_plates       = 25,       \
 	.segment_radius   = 2,        \
 	.divergent_radius = 5,        \
-	.erosion_ticks    = 20,       \
+	.erosion_ticks    = 10,       \
 	.rift_ticks       = 60
 
 /*

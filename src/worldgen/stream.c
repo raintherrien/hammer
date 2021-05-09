@@ -324,7 +324,7 @@ stream_graph_update(struct stream_graph *g)
 		struct stream_node *src = &g->nodes[ni];
 		struct stream_node *dst = &g->nodes[arc->receiver];
 		float d = src->height - dst->height;
-		const float talus = 0.3f + src->precip * (1 - src->temp) / 2;
+		const float talus = 0.1f + src->precip * (1 - src->temp) / 2;
 		if (d > talus) {
 			float xfer = (d - talus) / 4;
 			dst->height += xfer;
@@ -388,7 +388,7 @@ flow_drainage_area(struct stream_graph *g, uint32_t ni)
 	 * Note that since we use a Poisson distribution there's little point
 	 * calculating the drainage area of each individual polygon.
 	 */
-	n->drainage += 10 + 15 * n->precip * MIN(1, n->height / TECTONIC_CONTINENT_MASS);
+	n->drainage += 35 + 15 * MAX(n->uplift / 5, n->precip) * MIN(1, n->height / TECTONIC_CONTINENT_MASS);
 	uint32_t child = g->arcs[ni].receiver;
 	if (child != NO_NODE)
 		g->nodes[child].drainage += n->drainage;
