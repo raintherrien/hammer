@@ -34,12 +34,14 @@ endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/worldgen.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/overworld_generation.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/world_config.c
                    ${PROJECT_SOURCE_DIR}/src/gui/interaction.c
+                   ${PROJECT_SOURCE_DIR}/src/gui/line.c
                    ${PROJECT_SOURCE_DIR}/src/gui/map.c
                    ${PROJECT_SOURCE_DIR}/src/gui/rect.c
                    ${PROJECT_SOURCE_DIR}/src/gui/text.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/biome.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/stream.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c

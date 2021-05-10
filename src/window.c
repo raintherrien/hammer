@@ -149,12 +149,15 @@ window_create(void)
 	gui_text_renderer_create(&window.gui_text_renderer);
 	gui_map_renderer_create(&window.gui_map_renderer);
 	gui_rect_renderer_create(&window.gui_rect_renderer);
+	gui_line_renderer_create(&window.gui_line_renderer);
 
 	for (size_t i = 0; i < FRAMES_IN_FLIGHT; ++ i) {
 		gui_text_frame_create(&window.gui_text_renderer,
 		                      &window.frames[i].gui_text_frame);
 		gui_rect_frame_create(&window.gui_rect_renderer,
 		                      &window.frames[i].gui_rect_frame);
+		gui_line_frame_create(&window.gui_line_renderer,
+		                      &window.frames[i].gui_line_frame);
 		window.frames[i].fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		window.frames[i].id = i;
 	}
@@ -172,9 +175,11 @@ window_destroy(void)
 		glClientWaitSync(window.frames[i].fence,
 		                 GL_SYNC_FLUSH_COMMANDS_BIT,
 		                 (GLuint64)-1);
+		gui_line_frame_destroy(&window.frames[i].gui_line_frame);
 		gui_rect_frame_destroy(&window.frames[i].gui_rect_frame);
 		gui_text_frame_destroy(&window.frames[i].gui_text_frame);
 	}
+	gui_line_renderer_destroy(&window.gui_line_renderer);
 	gui_rect_renderer_destroy(&window.gui_rect_renderer);
 	gui_map_renderer_destroy(&window.gui_map_renderer);
 	gui_text_renderer_destroy(&window.gui_text_renderer);
@@ -292,6 +297,8 @@ window_startframe(void)
 void
 window_submitframe(void)
 {
+	gui_line_render(&window.gui_line_renderer,
+	                &window.current_frame->gui_line_frame);
 	gui_rect_render(&window.gui_rect_renderer,
 	                &window.current_frame->gui_rect_frame);
 	gui_text_render(&window.gui_text_renderer,

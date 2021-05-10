@@ -1,3 +1,6 @@
+#ifndef HAMMER_MATH_H_
+#define HAMMER_MATH_H_
+
 #include <assert.h>
 #include <math.h>
 
@@ -40,3 +43,5 @@ wrapidx(long long index, unsigned long size)
 		index += size;
 	return index % size;
 }
+
+#endif /* HAMMER_MATH_H_ */

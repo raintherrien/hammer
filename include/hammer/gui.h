@@ -220,6 +220,9 @@ void gui_current_container_get_offsets(float[3]);
 gui_container gui_current_container_get_state(void);
 void gui_current_container_set_state(gui_container);
 
+void gui_line(float x0, float y0, float z0, float t0, uint32_t c0,
+              float x1, float y1, float z1, float t1, uint32_t c1);
+
 float gui_char_width(float font_size);
 
 #endif /* HAMMER_GUI_H_ */

@@ -1,6 +1,9 @@
 #ifndef HAMMER_WORLDGEN_CLIMATE_H_
 #define HAMMER_WORLDGEN_CLIMATE_H_
 
+#include "hammer/math.h"
+#include <assert.h>
+
 /* Climate map dimensions (same as lithosphere) */
 #define CLIMATE_SCALE 10
 #define CLIMATE_LEN (1<<CLIMATE_SCALE)

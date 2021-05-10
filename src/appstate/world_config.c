@@ -1,5 +1,5 @@
 #include "hammer/appstate/world_config.h"
-#include "hammer/appstate/worldgen.h"
+#include "hammer/appstate/overworld_generation.h"
 #include "hammer/cli.h"
 #include "hammer/error.h"
 #include "hammer/glthread.h"
@@ -73,7 +73,7 @@ world_config_loop(DL_TASK_ARGS)
 	}
 
 	if (world_config->next_btn_state == GUI_BTN_RELEASED) {
-		dltask *next = worldgen_appstate_alloc_detached(
+		dltask *next = overworld_generation_appstate_alloc_detached(
 		                 &world_config->opts);
 		dlcontinuation(&world_config->task, world_config_exit);
 		dlwait(&world_config->task, 1);

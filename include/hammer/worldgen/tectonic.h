@@ -100,7 +100,7 @@ struct tectonic_opts {
 	.max_plates       = 25,       \
 	.segment_radius   = 2,        \
 	.divergent_radius = 5,        \
-	.erosion_ticks    = 10,       \
+	.erosion_ticks    = 5,        \
 	.rift_ticks       = 60
 
 /*

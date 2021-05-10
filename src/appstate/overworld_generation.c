@@ -1,4 +1,4 @@
-#include "hammer/appstate/worldgen.h"
+#include "hammer/appstate/overworld_generation.h"
 #include "hammer/appstate/world_config.h"
 #include "hammer/cli.h"
 #include "hammer/error.h"
@@ -18,7 +18,7 @@
 
 /* TODO: Images never freed, mouse never potentially released */
 
-struct worldgen_appstate {
+struct overworld_generation_appstate {
 	dltask               task;
 	struct tectonic_opts tectonic_opts;
 	struct world_opts    world_opts;
@@ -33,6 +33,8 @@ struct worldgen_appstate {
 	float                map_zoom;
 	float                map_tran_x;
 	float                map_tran_y;
+	float                selected_region_x;
+	float                selected_region_y;
 	GLuint               lithosphere_img;
 	GLuint               climate_img;
 	GLuint               stream_img;
@@ -45,16 +47,16 @@ struct worldgen_appstate {
 	char                 biome_tooltip_str[BIOME_TOOLTIP_STR_MAX_LEN];
 };
 
-static void worldgen_entry(DL_TASK_ARGS);
-static void worldgen_exit(DL_TASK_ARGS);
+static void overworld_generation_entry(DL_TASK_ARGS);
+static void overworld_generation_exit(DL_TASK_ARGS);
 
-static int worldgen_gl_setup(void *);
-static int worldgen_gl_frame(void *);
+static int overworld_generation_gl_setup(void *);
+static int overworld_generation_gl_frame(void *);
 
-static int worldgen_gl_blit_lithosphere_image(void *);
-static int worldgen_gl_blit_climate_image(void *);
-static int worldgen_gl_blit_stream_image(void *);
-static int worldgen_gl_blit_composite_image(void *);
+static int overworld_generation_gl_blit_lithosphere_image(void *);
+static int overworld_generation_gl_blit_climate_image(void *);
+static int overworld_generation_gl_blit_stream_image(void *);
+static int overworld_generation_gl_blit_composite_image(void *);
 
 static void viz_lithosphere_loop(DL_TASK_ARGS);
 static void viz_climate_loop(DL_TASK_ARGS);
@@ -62,11 +64,11 @@ static void viz_stream_loop(DL_TASK_ARGS);
 static void viz_composite_loop(DL_TASK_ARGS);
 
 dltask *
-worldgen_appstate_alloc_detached(struct world_opts *world_opts)
+overworld_generation_appstate_alloc_detached(struct world_opts *world_opts)
 {
-	struct worldgen_appstate *wg = xmalloc(sizeof(*wg));
+	struct overworld_generation_appstate *wg = xmalloc(sizeof(*wg));
 
-	wg->task = DL_TASK_INIT(worldgen_entry);
+	wg->task = DL_TASK_INIT(overworld_generation_entry);
 	/* TODO: Set tectonic params in world_config */
 	wg->tectonic_opts = (struct tectonic_opts) {
 		TECTONIC_OPTS_DEFAULTS,
@@ -83,11 +85,11 @@ worldgen_appstate_alloc_detached(struct world_opts *world_opts)
 }
 
 static void
-worldgen_entry(DL_TASK_ARGS)
+overworld_generation_entry(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct worldgen_appstate, wg, task);
+	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
 
-	glthread_execute(worldgen_gl_setup, wg);
+	glthread_execute(overworld_generation_gl_setup, wg);
 	wg->cancel_btn_state = 0;
 	wg->mouse_captured = 0;
 	wg->paused = 0;
@@ -96,6 +98,8 @@ worldgen_entry(DL_TASK_ARGS)
 	wg->map_zoom = wg->min_map_zoom;
 	wg->map_tran_x = 0;
 	wg->map_tran_y = 0;
+	wg->selected_region_x = FLT_MAX;
+	wg->selected_region_y = FLT_MAX;
 
 	/* Kick off lithosphere loop */
 	wg->lithosphere = xmalloc(sizeof(*wg->lithosphere));
@@ -105,9 +109,9 @@ worldgen_entry(DL_TASK_ARGS)
 }
 
 static void
-worldgen_exit(DL_TASK_ARGS)
+overworld_generation_exit(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct worldgen_appstate, wg, task);
+	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
 
 	if (wg->stream) {
 		stream_graph_destroy(wg->stream);
@@ -127,12 +131,12 @@ worldgen_exit(DL_TASK_ARGS)
 static void
 viz_lithosphere_loop(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct worldgen_appstate, wg, task);
+	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
 
-	if (glthread_execute(worldgen_gl_frame, wg) ||
+	if (glthread_execute(overworld_generation_gl_frame, wg) ||
 	    wg->cancel_btn_state == GUI_BTN_RELEASED)
 	{
-		dltail(&wg->task, worldgen_exit);
+		dltail(&wg->task, overworld_generation_exit);
 		return;
 	}
 
@@ -150,7 +154,7 @@ viz_lithosphere_loop(DL_TASK_ARGS)
 
 	if (!wg->paused) {
 		lithosphere_update(wg->lithosphere, &wg->tectonic_opts);
-		glthread_execute(worldgen_gl_blit_lithosphere_image, wg);
+		glthread_execute(overworld_generation_gl_blit_lithosphere_image, wg);
 	}
 
 	dltail(&wg->task, viz_lithosphere_loop);
@@ -159,12 +163,12 @@ viz_lithosphere_loop(DL_TASK_ARGS)
 static void
 viz_climate_loop(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct worldgen_appstate, wg, task);
+	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
 
-	if (glthread_execute(worldgen_gl_frame, wg) ||
+	if (glthread_execute(overworld_generation_gl_frame, wg) ||
 	    wg->cancel_btn_state == GUI_BTN_RELEASED)
 	{
-		dltail(&wg->task, worldgen_exit);
+		dltail(&wg->task, overworld_generation_exit);
 		return;
 	}
 
@@ -179,7 +183,7 @@ viz_climate_loop(DL_TASK_ARGS)
 
 	if (!wg->paused) {
 		climate_update(wg->climate);
-		glthread_execute(worldgen_gl_blit_climate_image, wg);
+		glthread_execute(overworld_generation_gl_blit_climate_image, wg);
 	}
 
 	dltail(&wg->task, viz_climate_loop);
@@ -188,12 +192,12 @@ viz_climate_loop(DL_TASK_ARGS)
 static void
 viz_stream_loop(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct worldgen_appstate, wg, task);
+	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
 
-	if (glthread_execute(worldgen_gl_frame, wg) ||
+	if (glthread_execute(overworld_generation_gl_frame, wg) ||
 	    wg->cancel_btn_state == GUI_BTN_RELEASED)
 	{
-		dltail(&wg->task, worldgen_exit);
+		dltail(&wg->task, overworld_generation_exit);
 		return;
 	}
 
@@ -201,13 +205,13 @@ viz_stream_loop(DL_TASK_ARGS)
 		/* Kick off composite loop */
 		wg->composite = wg; /* xxx any data */
 		wg->focussed_img = wg->composite;
-		glthread_execute(worldgen_gl_blit_composite_image, wg);
+		glthread_execute(overworld_generation_gl_blit_composite_image, wg);
 		dltail(&wg->task, viz_composite_loop);
 		return;
 	} else {
 		if (!wg->paused) {
 			stream_graph_update(wg->stream);
-			glthread_execute(worldgen_gl_blit_stream_image, wg);
+			glthread_execute(overworld_generation_gl_blit_stream_image, wg);
 		}
 	}
 
@@ -217,22 +221,28 @@ viz_stream_loop(DL_TASK_ARGS)
 static void
 viz_composite_loop(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct worldgen_appstate, wg, task);
+	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
 
-	if (glthread_execute(worldgen_gl_frame, wg) ||
+	if (glthread_execute(overworld_generation_gl_frame, wg) ||
 	    wg->cancel_btn_state == GUI_BTN_RELEASED)
 	{
-		dltail(&wg->task, worldgen_exit);
+		dltail(&wg->task, overworld_generation_exit);
 		return;
+	}
+
+	if (wg->selected_region_x != FLT_MAX &&
+	    wg->selected_region_y != FLT_MAX)
+	{
+		/* xxx kick off local terrain generation, erosion */
 	}
 
 	dltail(&wg->task, viz_composite_loop);
 }
 
 static int
-worldgen_gl_setup(void *wg_)
+overworld_generation_gl_setup(void *wg_)
 {
-	struct worldgen_appstate *wg = wg_;
+	struct overworld_generation_appstate *wg = wg_;
 
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
@@ -304,9 +314,9 @@ worldgen_gl_setup(void *wg_)
 }
 
 static int
-worldgen_gl_frame(void *wg_)
+overworld_generation_gl_frame(void *wg_)
 {
-	struct worldgen_appstate *wg = wg_;
+	struct overworld_generation_appstate *wg = wg_;
 
 	window_startframe();
 
@@ -317,29 +327,26 @@ worldgen_gl_frame(void *wg_)
 	}
 	if (window.scroll != 0) {
 		float delta = window.scroll / 10.0f;
-		if (wg->map_zoom + delta < 10 &&
-		    wg->map_zoom + delta > wg->min_map_zoom)
-		{
-			/*
-			 * Holy. Actual. Hell. This took me hours for some
-			 * reason. We're trying to zoom into the center of the
-			 * screen. We first need to determine how many pixels
-			 * we're losing (cropping) from both width and height.
-			 * HOWFUCKINGEVER these pixels will be in IMAGE SPACE
-			 * because our default zoom level normalizes the
-			 * shorter axis to, in this case, 1024. We need to
-			 * divide this number to normalize back to window
-			 * coordinates, otherwise we won't zoom in on the
-			 * center. We'll zoom in on the window coordinate of
-			 * whatever the center of our image space is (512?).
-			 */
-			float d = wg->map_zoom * (wg->map_zoom + delta);
-			float cropx = (window.width  * delta) / d;
-			float cropy = (window.height * delta) / d;
-			wg->map_tran_x += cropx / 2 * window.width  / 1024.0f;
-			wg->map_tran_y += cropy / 2 * window.height / 1024.0f;
-			wg->map_zoom += delta;
-		}
+		if (wg->map_zoom + delta < wg->min_map_zoom)
+			delta = wg->min_map_zoom - wg->map_zoom;
+		/*
+		 * Holy. Actual. Hell. This took me hours for some reason.
+		 * We're trying to zoom into the center of the screen. We
+		 * first need to determine how many pixels we're losing
+		 * (cropping) from both width and height. HOWFUCKINGEVER these
+		 * pixels will be in IMAGE SPACE because our default zoom
+		 * level normalizes the shorter axis to, in this case, 1024.
+		 * We need to divide this number to normalize back to window
+		 * coordinates, otherwise we won't zoom in on the center.
+		 * We'll zoom in on the window coordinate of whatever the
+		 * center of our image space is (512?).
+		 */
+		float d = wg->map_zoom * (wg->map_zoom + delta);
+		float cropx = (window.width  * delta) / d;
+		float cropy = (window.height * delta) / d;
+		wg->map_tran_x += cropx / 2  / 1024.0f;
+		wg->map_tran_y += cropy / 2 / 1024.0f;
+		wg->map_zoom += delta;
 	}
 
 	if (wg->mouse_captured) {
@@ -347,8 +354,8 @@ worldgen_gl_frame(void *wg_)
 			wg->mouse_captured = 0;
 			window_unlock_mouse();
 		}
-		wg->map_tran_x -= window.motion_x / wg->map_zoom;
-		wg->map_tran_y -= window.motion_y / wg->map_zoom;
+		wg->map_tran_x -= window.motion_x / (float)window.width  / wg->map_zoom;
+		wg->map_tran_y -= window.motion_y / (float)window.height / wg->map_zoom;
 	}
 
 	unsigned font_size = 24;
@@ -364,6 +371,11 @@ worldgen_gl_frame(void *wg_)
 	const struct text_opts normal_text_opts = {
 		TEXT_OPTS_DEFAULTS,
 		.size = font_size
+	};
+
+	const struct text_opts small_text_opts = {
+		TEXT_OPTS_DEFAULTS,
+		.size = 20
 	};
 
 	struct btn_opts btn_opts = {
@@ -411,6 +423,8 @@ worldgen_gl_frame(void *wg_)
 
 	gui_text("World Generation", bold_text_opts);
 	gui_stack_break(&stack);
+	gui_text("Scroll to zoom - Hold middle mouse to pan", small_text_opts);
+	gui_stack_break(&stack);
 	gui_text(wg->lithosphere_progress_str, normal_text_opts);
 	gui_stack_break(&stack);
 	gui_text(wg->climate_progress_str, normal_text_opts);
@@ -423,14 +437,15 @@ worldgen_gl_frame(void *wg_)
 	wg->cancel_btn_state = gui_btn(wg->cancel_btn_state, "Cancel", btn_opts);
 	gui_stack_break(&stack);
 
+	/*
+	 * Show the user what biome they're hovering over on the climate image.
+	 */
 	if (wg->focussed_img == wg->climate &&
 	    window.mouse_x >= 0 && window.mouse_y >= 0 &&
 	    window.mouse_x < window.width && window.mouse_y < window.height)
 	{
-		size_t imgx = window.mouse_x / wg->map_zoom +
-		              wg->map_tran_x / window.width  * CLIMATE_LEN;
-		size_t imgy = window.mouse_y / wg->map_zoom +
-		              wg->map_tran_y / window.height * CLIMATE_LEN;
+		size_t imgx = window.mouse_x / wg->map_zoom + wg->map_tran_x * CLIMATE_LEN;
+		size_t imgy = window.mouse_y / wg->map_zoom + wg->map_tran_y * CLIMATE_LEN;
 		size_t i = wrapidx(imgy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(imgx, CLIMATE_LEN);
 		float temp = 1 - wg->climate->inv_temp[i];
 		float precip = wg->climate->precipitation[i];
@@ -441,6 +456,44 @@ worldgen_gl_frame(void *wg_)
 		         "Hovering over: %s",
 		         biome_name[b]);
 		gui_text(wg->biome_tooltip_str, normal_text_opts);
+		gui_stack_break(&stack);
+	}
+
+	/*
+	 * Show the user details about a composite region.
+	 */
+	if (wg->focussed_img == wg->composite && wg->composite) {
+		gui_text("Left click to select region", normal_text_opts);
+		gui_stack_break(&stack);
+		/* Determine the 512x512 region highlighted */
+		float rl, rr, rt, rb; /* world coords */
+		float wrl, wrr, wrt, wrb; /* window coords */
+		{
+			float scale = LITHOSPHERE_LEN / (float)wg->stream_size;
+			float zoom = wg->map_zoom * scale;
+			const unsigned region_size = 512;
+			float tx = wg->map_tran_x * wg->stream_size;
+			float ty = wg->map_tran_y * wg->stream_size;
+			rl = window.mouse_x / zoom + tx;
+			rt = window.mouse_y / zoom + ty;
+			rl = floorf(rl / region_size) * region_size;
+			rt = floorf(rt / region_size) * region_size;
+			rr = rl + region_size;
+			rb = rt + region_size;
+			wrl = (rl - tx) * zoom;
+			wrr = (rr - tx) * zoom;
+			wrt = (rt - ty) * zoom;
+			wrb = (rb - ty) * zoom;
+		}
+		/* Highlight the region with a white box */
+		gui_line(wrl, wrt, 0.25f, 1, 0xffffffff, wrl, wrb, 0.25f, 1, 0xffffffff);
+		gui_line(wrr, wrt, 0.25f, 1, 0xffffffff, wrr, wrb, 0.25f, 1, 0xffffffff);
+		gui_line(wrl, wrt, 0.25f, 1, 0xffffffff, wrr, wrt, 0.25f, 1, 0xffffffff);
+		gui_line(wrl, wrb, 0.25f, 1, 0xffffffff, wrr, wrb, 0.25f, 1, 0xffffffff);
+		if (window.unhandled_mouse_press[MOUSEBL]) {
+			wg->selected_region_x = rl;
+			wg->selected_region_y = rt;
+		}
 	}
 
 	gui_container_pop();
@@ -455,8 +508,8 @@ worldgen_gl_frame(void *wg_)
 			.height = window.height,
 			.scale_x = wg->map_zoom * wx,
 			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x / window.width,
-			.tran_y = wg->map_tran_y / window.height
+			.tran_x = wg->map_tran_x,
+			.tran_y = wg->map_tran_y
 		});
 	} else if (wg->composite) {
 		const struct map_opts tab_opts = {
@@ -490,8 +543,8 @@ worldgen_gl_frame(void *wg_)
 			.height = window.height,
 			.scale_x = wg->map_zoom * wx,
 			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x / window.width,
-			.tran_y = wg->map_tran_y / window.height
+			.tran_x = wg->map_tran_x,
+			.tran_y = wg->map_tran_y
 		});
 	} else if (wg->stream) {
 		const struct map_opts tab_opts = {
@@ -517,16 +570,16 @@ worldgen_gl_frame(void *wg_)
 
 	if (wg->focussed_img == wg->climate) {
 		/* wrap scale */
-		float wx = CLIMATE_LEN / (float)window.width;
-		float wy = CLIMATE_LEN / (float)window.height;
+		float wx = LITHOSPHERE_LEN / (float)window.width;
+		float wy = LITHOSPHERE_LEN / (float)window.height;
 		gui_map(wg->climate_img, (struct map_opts) {
 			MAP_OPTS_DEFAULTS,
 			.width  = window.width,
 			.height = window.height,
 			.scale_x = wg->map_zoom * wx,
 			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x / window.width,
-			.tran_y = wg->map_tran_y / window.height
+			.tran_x = wg->map_tran_x,
+			.tran_y = wg->map_tran_y
 		});
 	} else if (wg->climate) {
 		const struct map_opts tab_opts = {
@@ -560,8 +613,8 @@ worldgen_gl_frame(void *wg_)
 			.height = window.height,
 			.scale_x = wg->map_zoom * wx,
 			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x / window.width,
-			.tran_y = wg->map_tran_y / window.height
+			.tran_x = wg->map_tran_x,
+			.tran_y = wg->map_tran_y
 		});
 	} else if (wg->lithosphere) {
 		const struct map_opts tab_opts = {
@@ -598,9 +651,9 @@ worldgen_gl_frame(void *wg_)
 }
 
 static int
-worldgen_gl_blit_lithosphere_image(void *wg_)
+overworld_generation_gl_blit_lithosphere_image(void *wg_)
 {
-	struct worldgen_appstate *wg = wg_;
+	struct overworld_generation_appstate *wg = wg_;
 	struct lithosphere *l = wg->lithosphere;
 	GLubyte *img = xmalloc(LITHOSPHERE_AREA * sizeof(*img) * 3);
 	/* Blue below sealevel, green to red continent altitude */
@@ -631,9 +684,9 @@ worldgen_gl_blit_lithosphere_image(void *wg_)
 }
 
 static int
-worldgen_gl_blit_climate_image(void *wg_)
+overworld_generation_gl_blit_climate_image(void *wg_)
 {
-	struct worldgen_appstate *wg = wg_;
+	struct overworld_generation_appstate *wg = wg_;
 	struct climate *c = wg->climate;
 	GLubyte *img = xmalloc(CLIMATE_AREA * sizeof(*img) * 3);
 	for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
@@ -710,9 +763,9 @@ swizzle(uint32_t i, GLubyte *rgb)
 }
 
 static int
-worldgen_gl_blit_stream_image(void *wg_)
+overworld_generation_gl_blit_stream_image(void *wg_)
 {
-	struct worldgen_appstate *wg = wg_;
+	struct overworld_generation_appstate *wg = wg_;
 	struct stream_graph *s = wg->stream;
 	size_t area = s->size * s->size;
 	GLubyte *img = xcalloc(area * 3, sizeof(*img));
@@ -772,9 +825,9 @@ baryw(struct stream_node *n[3], float w[3], long x, long y)
 }
 
 static int
-worldgen_gl_blit_composite_image(void *wg_)
+overworld_generation_gl_blit_composite_image(void *wg_)
 {
-	struct worldgen_appstate *wg = wg_;
+	struct overworld_generation_appstate *wg = wg_;
 	struct stream_graph *s = wg->stream;
 	GLubyte *img = xmalloc(s->size * s->size * sizeof(*img) * 3);
 

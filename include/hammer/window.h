@@ -1,6 +1,7 @@
 #ifndef HAMMER_WINDOW_H_
 #define HAMMER_WINDOW_H_
 
+#include "hammer/gui/line.h"
 #include "hammer/gui/map.h"
 #include "hammer/gui/rect.h"
 #include "hammer/gui/text.h"
@@ -13,6 +14,7 @@
 struct frame {
 	struct gui_text_frame gui_text_frame;
 	struct gui_rect_frame gui_rect_frame;
+	struct gui_line_frame gui_line_frame;
 	GLsync fence;
 	size_t id;
 };
@@ -30,6 +32,7 @@ struct window {
 	struct gui_text_renderer gui_text_renderer;
 	struct gui_map_renderer gui_map_renderer;
 	struct gui_rect_renderer gui_rect_renderer;
+	struct gui_line_renderer gui_line_renderer;
 	gui_container  gui_default_window;
 	gui_container *current_container;
 
