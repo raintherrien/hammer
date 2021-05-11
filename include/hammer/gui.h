@@ -120,7 +120,7 @@ struct text_opts {
                           .weight = 128,            \
                           .xoffset = 0,             \
                           .yoffset = 0,             \
-                          .zoffset = 0
+                          .zoffset = 1
 
 #define CHECK_OPTS_DEFAULTS BTN_OPTS_DEFAULTS
 
@@ -128,7 +128,7 @@ struct text_opts {
 
 #define MAP_OPTS_DEFAULTS .xoffset = 0, \
                           .yoffset = 0, \
-                          .zoffset = 0, \
+                          .zoffset = 1, \
                           .width   = 0, \
                           .height  = 0, \
                           .tran_x  = 0, \
@@ -139,7 +139,7 @@ struct text_opts {
 #define RECT_OPTS_DEFAULTS .color = 0x9c9c9cff, \
                            .xoffset = 0, \
                            .yoffset = 0, \
-                           .zoffset = 0
+                           .zoffset = 1
 
 #define TEXT_OPTS_DEFAULTS .color = 0xffffffff, \
                            .style = 0,          \
@@ -147,7 +147,7 @@ struct text_opts {
                            .weight = 128,       \
                            .xoffset = 0,        \
                            .yoffset = 0,        \
-                           .zoffset = 0
+                           .zoffset = 1
 
 gui_btn_state gui_btn(
 	gui_btn_state   prior_state,
@@ -206,7 +206,7 @@ struct window_opts {
                             .vpadding = 0, \
                             .xoffset = 0, \
                             .yoffset = 0, \
-                            .zoffset = 0
+                            .zoffset = 1
 #define WINDOW_OPTS_DEFAULT STACK_OPTS_DEFAULTS
 
 void gui_window_init(gui_container *, struct window_opts);

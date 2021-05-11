@@ -1,3 +1,10 @@
+/*
+ * This tectonic uplift simulation is loosely based upon:
+ *   Lauri Viitanen, Physically Based Terrain Generation: Procedural Heightmap
+ *   Generation Using Plate Tectonics, 2012.
+ *   http://urn.fi/URN:NBN:fi:amk-201204023993
+ */
+
 #ifndef HAMMER_WORLDGEN_TECTONIC_H_
 #define HAMMER_WORLDGEN_TECTONIC_H_
 

@@ -91,6 +91,55 @@ opengl_init(void)
 #endif
 }
 
+static void window_draw_frame_timing(void)
+{
+	const float z = 99; /* above everything */
+	const float graph_height_px = 100;
+	/* Determine longest frame and scale graph */
+	float avg_cpu_ns = 0;
+	float max_cpu_ns = 0;
+	for (int x = 0; x < FRAME_TIMING_LEN; ++ x) {
+		if (window.timing[x].cpu_ns > max_cpu_ns)
+			max_cpu_ns = window.timing[x].cpu_ns;
+		avg_cpu_ns += window.timing[x].cpu_ns;
+	}
+	avg_cpu_ns /= FRAME_TIMING_LEN;
+
+	float ys = graph_height_px / max_cpu_ns;
+	/* Draw frame graph from right to left to right, right most recent */
+	for (int x = 0; x < FRAME_TIMING_LEN; ++ x) {
+		size_t tid = (window.current_frame_id + x - FRAME_TIMING_LEN) % FRAME_TIMING_LEN;
+		struct frame_timing *t = &window.timing[tid];
+		float total_y = graph_height_px - t->cpu_ns * ys;
+		gui_line(x, graph_height_px, z, 1, 0xffffffff, x, total_y, 1, 1, 0xffffffff);
+	}
+	/* Draw y axis label */
+	float avgy = graph_height_px - avg_cpu_ns * ys;
+	char label[32];
+	/* Median */
+	gui_line(0, avgy, z, 1, 0xff0000ff, FRAME_TIMING_LEN, avgy, z, 1, 0xffff00ff);
+	snprintf(label, 32, "%fms avg", avg_cpu_ns / 1000000);
+	gui_text(label, (struct text_opts) {
+		TEXT_OPTS_DEFAULTS,
+		.xoffset = FRAME_TIMING_LEN + 1,
+		.yoffset = avgy - 24 / 2,
+		.zoffset = z,
+		.size = 24,
+		.color = 0xffff00ff
+	});
+	/* Max */
+	gui_line(0, 1, z, 1, 0xff0000ff, FRAME_TIMING_LEN, 1, z, 1, 0xff0000ff);
+	snprintf(label, 32, "%fms max", max_cpu_ns / 1000000);
+	gui_text(label, (struct text_opts) {
+		TEXT_OPTS_DEFAULTS,
+		.xoffset = FRAME_TIMING_LEN + 1,
+		.yoffset = 1,
+		.zoffset = z,
+		.size = 24,
+		.color = 0xff0000ff
+	});
+}
+
 void
 window_create(void)
 {
@@ -161,11 +210,13 @@ window_create(void)
 		window.frames[i].fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 		window.frames[i].id = i;
 	}
+	memset(window.timing, 0, FRAME_TIMING_LEN * sizeof(*window.timing));
 	window.current_frame_id = FRAMES_IN_FLIGHT;
 	window.current_frame = window.frames;
 	gui_window_init(&window.gui_default_window, (struct window_opts) { WINDOW_OPTS_DEFAULT });
 	window.current_container = &window.gui_default_window;
 	window.should_close = 0;
+	window.display_frame_timing = 0;
 }
 
 void
@@ -189,10 +240,12 @@ window_destroy(void)
 	SDL_Quit();
 }
 
-void
-window_startframe(void)
+static void
+window_acquire_next_frame(void)
 {
-	size_t new_frame = (++ window.current_frame_id) % FRAMES_IN_FLIGHT;
+	++ window.current_frame_id;
+	size_t new_frame = window.current_frame_id % FRAMES_IN_FLIGHT;
+	size_t timing_id = window.current_frame_id % FRAME_TIMING_LEN;
 	window.current_frame = &window.frames[new_frame];
 
 	/* Wait for next frame in ring buffer to complete */
@@ -207,10 +260,21 @@ window_startframe(void)
 	}
 	glDeleteSync(recycling_fence);
 	window.current_frame->fence = 0;
+	window.timing[timing_id].cpu_ns = (window.current_frame->frame_end.tv_sec - window.current_frame->frame_begin.tv_sec) * 1000000000 +
+	                                  (window.current_frame->frame_end.tv_nsec - window.current_frame->frame_begin.tv_nsec);
+	timespec_get(&window.current_frame->frame_begin, TIME_UTC);
 
 	/* Begin this frame */
 	window.current_frame->id = new_frame;
+
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	/*
+	 * Conditionally draw timing information for this frame before
+	 * starting new timers, will have a lag of FRAMES_IN_FLIGHT.
+	 */
+	if (window.display_frame_timing)
+		window_draw_frame_timing();
 
 	window.resized = 0;
 	window.motion_x = 0;
@@ -232,6 +296,9 @@ window_startframe(void)
 			if (window.text_input_len >= MAX_TEXT_INPUT_LEN)
 				break;
 			switch (e.key.keysym.scancode) {
+			case SDL_SCANCODE_F3:
+				window.display_frame_timing = !window.display_frame_timing;
+				break;
 			case SDL_SCANCODE_RETURN:
 				window.text_input[window.text_input_len ++] = '\n';
 				break;
@@ -291,7 +358,7 @@ window_startframe(void)
 	window.mouse_held[MOUSEBM] = ms & SDL_BUTTON(SDL_BUTTON_MIDDLE);
 
 	/* 0,0 top left */
-	glm_ortho(0, window.width, window.height, 0, -1000, 1, window.ortho_matrix);
+	glm_ortho(0, window.width, window.height, 0, -100, 100, window.ortho_matrix);
 }
 
 void
@@ -307,4 +374,8 @@ window_submitframe(void)
 	/* Create fence to complete when this frame is rendered */
 	SDL_GL_SwapWindow(window.handle);
 	window.current_frame->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	/* Conclude timing this frame */
+	timespec_get(&window.current_frame->frame_end, TIME_UTC);
+
+	window_acquire_next_frame();
 }

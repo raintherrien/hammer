@@ -107,8 +107,6 @@ world_config_gl_frame(void *world_config_)
 {
 	struct world_config_appstate *world_config = world_config_;
 
-	window_startframe();
-
 	unsigned font_size = 24;
 	unsigned border_padding = 32;
 	unsigned element_padding = 8;

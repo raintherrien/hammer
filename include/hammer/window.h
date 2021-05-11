@@ -8,15 +8,23 @@
 #include <cglm/mat4.h>
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
+#include <time.h>
 
 #define FRAMES_IN_FLIGHT 1
+#define FRAME_TIMING_LEN 800
 
 struct frame {
 	struct gui_text_frame gui_text_frame;
 	struct gui_rect_frame gui_rect_frame;
 	struct gui_line_frame gui_line_frame;
+	struct timespec frame_begin;
+	struct timespec frame_end;
 	GLsync fence;
 	size_t id;
+};
+
+struct frame_timing {
+	uint64_t cpu_ns;
 };
 
 enum {
@@ -41,6 +49,7 @@ struct window {
 	SDL_Event    *frame_events;
 	SDL_GLContext glcontext;
 	struct frame  frames[FRAMES_IN_FLIGHT];
+	struct frame_timing timing[FRAME_TIMING_LEN];
 	struct frame *current_frame;
 	size_t        current_frame_id;
 	size_t        text_input_len;
@@ -54,6 +63,7 @@ struct window {
 	int           mouse_held[MOUSEB_COUNT];
 	int           unhandled_mouse_press[MOUSEB_COUNT];
 	int           should_close;
+	int           display_frame_timing;
 	char          text_input[MAX_TEXT_INPUT_LEN];
 };
 
@@ -61,7 +71,6 @@ extern struct window window;
 
 void window_create(void);
 void window_destroy(void);
-void window_startframe(void);
 void window_submitframe(void);
 
 inline static void

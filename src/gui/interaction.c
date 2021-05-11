@@ -25,7 +25,7 @@ gui_btn(gui_btn_state   prior_state,
 		.weight  = opts.weight,
 		.xoffset = opts.xoffset,
 		.yoffset = vcenter - opts.size / 2,
-		.zoffset = opts.zoffset + 0.5f
+		.zoffset = opts.zoffset
 	});
 	gui_current_container_set_state(s);
 	float container_offset[3];
@@ -35,7 +35,7 @@ gui_btn(gui_btn_state   prior_state,
 		.color   = opts.background,
 		.xoffset = opts.xoffset,
 		.yoffset = vcenter - half_height,
-		.zoffset = opts.zoffset,
+		.zoffset = opts.zoffset - 0.1f,
 		.width   = opts.width,
 		.height  = opts.height
 	});

@@ -94,8 +94,6 @@ main_menu_gl_frame(void *main_menu_)
 {
 	struct main_menu_appstate *main_menu = main_menu_;
 
-	window_startframe();
-
 	unsigned btn_height = 48;
 	unsigned btn_font_size = btn_height - 16;
 

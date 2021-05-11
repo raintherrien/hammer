@@ -1,4 +1,5 @@
 #include "hammer/appstate/overworld_generation.h"
+#include "hammer/appstate/region_generation.h"
 #include "hammer/appstate/world_config.h"
 #include "hammer/cli.h"
 #include "hammer/error.h"
@@ -62,6 +63,7 @@ static void viz_lithosphere_loop(DL_TASK_ARGS);
 static void viz_climate_loop(DL_TASK_ARGS);
 static void viz_stream_loop(DL_TASK_ARGS);
 static void viz_composite_loop(DL_TASK_ARGS);
+static void post_region_generation(DL_TASK_ARGS);
 
 dltask *
 overworld_generation_appstate_alloc_detached(struct world_opts *world_opts)
@@ -233,8 +235,31 @@ viz_composite_loop(DL_TASK_ARGS)
 	if (wg->selected_region_x != FLT_MAX &&
 	    wg->selected_region_y != FLT_MAX)
 	{
-		/* xxx kick off local terrain generation, erosion */
+		/* Kick off local region generation */
+		dltask *next = region_generation_appstate_alloc_detached(
+			wg->climate,
+			wg->lithosphere,
+			wg->stream,
+			&wg->world_opts);
+		dlcontinuation(&wg->task, post_region_generation);
+		dlwait(&wg->task, 1);
+		dlnext(next, &wg->task);
+		dlasync(next);
+		return;
 	}
+
+	dltail(&wg->task, viz_composite_loop);
+}
+
+static void
+post_region_generation(DL_TASK_ARGS)
+{
+	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
+
+	/* TODO: Check whether we chose to cancel or conitnue with region */
+
+	wg->selected_region_x = FLT_MAX;
+	wg->selected_region_y = FLT_MAX;
 
 	dltail(&wg->task, viz_composite_loop);
 }
@@ -318,8 +343,6 @@ overworld_generation_gl_frame(void *wg_)
 {
 	struct overworld_generation_appstate *wg = wg_;
 
-	window_startframe();
-
 	if (window.resized) {
 		wg->min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
 				       (float)window.height / LITHOSPHERE_LEN);
@@ -378,18 +401,29 @@ overworld_generation_gl_frame(void *wg_)
 		.size = 20
 	};
 
-	struct btn_opts btn_opts = {
+	const struct btn_opts btn_opts = {
 		BTN_OPTS_DEFAULTS,
 		.width = font_size * 8,
 		.height = font_size + 16,
 		.size = font_size
 	};
 
-	struct check_opts check_opts = {
+	const struct check_opts check_opts = {
 		BTN_OPTS_DEFAULTS,
 		.size = font_size,
 		.width = font_size,
 		.height = font_size,
+	};
+
+	const struct map_opts map_opts = {
+		MAP_OPTS_DEFAULTS,
+		.zoffset = -1,
+		.width  = window.width,
+		.height = window.height,
+		.scale_x = wg->map_zoom * (LITHOSPHERE_LEN / (float)window.width),
+		.scale_y = wg->map_zoom * (LITHOSPHERE_LEN / (float)window.height),
+		.tran_x = wg->map_tran_x,
+		.tran_y = wg->map_tran_y
 	};
 
 	snprintf(wg->lithosphere_progress_str,
@@ -499,18 +533,7 @@ overworld_generation_gl_frame(void *wg_)
 	gui_container_pop();
 
 	if (wg->focussed_img == wg->composite) {
-		/* wrap scale, normalize to lithosphere size */
-		float wx = LITHOSPHERE_LEN / (float)window.width;
-		float wy = LITHOSPHERE_LEN / (float)window.height;
-		gui_map(wg->composite_img, (struct map_opts) {
-			MAP_OPTS_DEFAULTS,
-			.width  = window.width,
-			.height = window.height,
-			.scale_x = wg->map_zoom * wx,
-			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x,
-			.tran_y = wg->map_tran_y
-		});
+		gui_map(wg->composite_img, map_opts);
 	} else if (wg->composite) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
@@ -534,18 +557,7 @@ overworld_generation_gl_frame(void *wg_)
 	}
 
 	if (wg->focussed_img == wg->stream) {
-		/* wrap scale, normalize to lithosphere size */
-		float wx = LITHOSPHERE_LEN / (float)window.width;
-		float wy = LITHOSPHERE_LEN / (float)window.height;
-		gui_map(wg->stream_img, (struct map_opts) {
-			MAP_OPTS_DEFAULTS,
-			.width  = window.width,
-			.height = window.height,
-			.scale_x = wg->map_zoom * wx,
-			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x,
-			.tran_y = wg->map_tran_y
-		});
+		gui_map(wg->stream_img, map_opts);
 	} else if (wg->stream) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
@@ -569,18 +581,7 @@ overworld_generation_gl_frame(void *wg_)
 	}
 
 	if (wg->focussed_img == wg->climate) {
-		/* wrap scale */
-		float wx = LITHOSPHERE_LEN / (float)window.width;
-		float wy = LITHOSPHERE_LEN / (float)window.height;
-		gui_map(wg->climate_img, (struct map_opts) {
-			MAP_OPTS_DEFAULTS,
-			.width  = window.width,
-			.height = window.height,
-			.scale_x = wg->map_zoom * wx,
-			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x,
-			.tran_y = wg->map_tran_y
-		});
+		gui_map(wg->climate_img, map_opts);
 	} else if (wg->climate) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
@@ -604,18 +605,7 @@ overworld_generation_gl_frame(void *wg_)
 	}
 
 	if (wg->focussed_img == wg->lithosphere) {
-		/* wrap scale */
-		float wx = LITHOSPHERE_LEN / (float)window.width;
-		float wy = LITHOSPHERE_LEN / (float)window.height;
-		gui_map(wg->lithosphere_img, (struct map_opts) {
-			MAP_OPTS_DEFAULTS,
-			.width  = window.width,
-			.height = window.height,
-			.scale_x = wg->map_zoom * wx,
-			.scale_y = wg->map_zoom * wy,
-			.tran_x = wg->map_tran_x,
-			.tran_y = wg->map_tran_y
-		});
+		gui_map(wg->lithosphere_img, map_opts);
 	} else if (wg->lithosphere) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
