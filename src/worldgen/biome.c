@@ -76,6 +76,7 @@ biome_class(float elev, float temp, float precip)
 void
 DEBUG_print_biome_map(void)
 {
+#if HAMMER_LIBPNG_SUPPORT
 	const unsigned dim = 1024;
 	unsigned char *img = xmalloc(dim * dim * sizeof(*img) * 3);
 	for (unsigned y = 0; y < dim; ++ y)
@@ -89,4 +90,5 @@ DEBUG_print_biome_map(void)
 
 	write_rgb("biome_map.png", img, dim, dim);
 	free(img);
+#endif
 }

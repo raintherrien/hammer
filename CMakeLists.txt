@@ -20,9 +20,9 @@ find_package(deadlock REQUIRED)
 find_package(delaunay REQUIRED)
 find_package(GLEW     REQUIRED)
 find_package(OpenGL   REQUIRED)
-find_package(PNG      REQUIRED)
 find_package(SDL2     REQUIRED COMPONENTS SDL2::SDL2 SDL2::main SDL2::image)
 find_package(Threads  REQUIRED)
+find_package(PNG      QUIET)
 
 # Add warnings
 # Note: add_compile_options propegates these options to e.g. examples.
@@ -50,7 +50,6 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
                    ${PROJECT_SOURCE_DIR}/src/file.c
                    ${PROJECT_SOURCE_DIR}/src/glsl.c
-                   ${PROJECT_SOURCE_DIR}/src/image.c
                    ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/salloc.c
                    ${PROJECT_SOURCE_DIR}/src/main.c
@@ -60,6 +59,11 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
                    ${PROJECT_SOURCE_DIR}/src/window.c)
+if(PNG_FOUND)
+	set(HAMMER_SOURCES "${HAMMER_SOURCES} ${PROJECT_SOURCE_DIR}/src/image.c")
+	target_link_libraries(hammer PNG::PNG)
+	target_compile_definitions(hammer PRIVATE HAMMER_LIBPNG_SUPPORT)
+endif()
 
 # Assume MINGW uses POSIX threads
 if(WIN32 AND NOT MINGW)
@@ -76,7 +80,6 @@ target_link_libraries(hammer m
                              cglm
                              deadlock
                              delaunay
-                             PNG::PNG
                              OpenGL::GL
                              GLEW::GLEW
                              SDL2
