@@ -60,7 +60,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
                    ${PROJECT_SOURCE_DIR}/src/window.c)
 if(PNG_FOUND)
-	set(HAMMER_SOURCES "${HAMMER_SOURCES} ${PROJECT_SOURCE_DIR}/src/image.c")
+	list(APPEND HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/image.c)
 endif()
 
 # Assume MINGW uses POSIX threads
