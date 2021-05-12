@@ -59,6 +59,9 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
                    ${PROJECT_SOURCE_DIR}/src/window.c)
+if(PNG_FOUND)
+	set(HAMMER_SOURCES "${HAMMER_SOURCES} ${PROJECT_SOURCE_DIR}/src/image.c")
+endif()
 
 # Assume MINGW uses POSIX threads
 if(WIN32 AND NOT MINGW)
@@ -84,7 +87,6 @@ target_compile_definitions(hammer
                            PRIVATE "HAMMER_VERSION_MINOR=${hammer_VERSION_MINOR}"
                            PRIVATE "HAMMER_VERSION_PATCH=${hammer_VERSION_PATCH}")
 if(PNG_FOUND)
-	set(HAMMER_SOURCES "${HAMMER_SOURCES} ${PROJECT_SOURCE_DIR}/src/image.c")
 	target_link_libraries(hammer PNG::PNG)
 	target_compile_definitions(hammer PRIVATE HAMMER_LIBPNG_SUPPORT)
 endif()
