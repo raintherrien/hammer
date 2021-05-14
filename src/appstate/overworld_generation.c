@@ -493,43 +493,6 @@ overworld_generation_gl_frame(void *wg_)
 		gui_stack_break(&stack);
 	}
 
-	/*
-	 * Show the user details about a composite region.
-	 */
-	if (wg->focussed_img == wg->composite && wg->composite) {
-		gui_text("Left click to select region", normal_text_opts);
-		gui_stack_break(&stack);
-		/* Determine the 512x512 region highlighted */
-		float rl, rr, rt, rb; /* world coords */
-		float wrl, wrr, wrt, wrb; /* window coords */
-		{
-			float scale = LITHOSPHERE_LEN / (float)wg->stream_size;
-			float zoom = wg->map_zoom * scale;
-			const unsigned region_size = 512;
-			float tx = wg->map_tran_x * wg->stream_size;
-			float ty = wg->map_tran_y * wg->stream_size;
-			rl = window.mouse_x / zoom + tx;
-			rt = window.mouse_y / zoom + ty;
-			rl = floorf(rl / region_size) * region_size;
-			rt = floorf(rt / region_size) * region_size;
-			rr = rl + region_size;
-			rb = rt + region_size;
-			wrl = (rl - tx) * zoom;
-			wrr = (rr - tx) * zoom;
-			wrt = (rt - ty) * zoom;
-			wrb = (rb - ty) * zoom;
-		}
-		/* Highlight the region with a white box */
-		gui_line(wrl, wrt, 0.25f, 1, 0xffffffff, wrl, wrb, 0.25f, 1, 0xffffffff);
-		gui_line(wrr, wrt, 0.25f, 1, 0xffffffff, wrr, wrb, 0.25f, 1, 0xffffffff);
-		gui_line(wrl, wrt, 0.25f, 1, 0xffffffff, wrr, wrt, 0.25f, 1, 0xffffffff);
-		gui_line(wrl, wrb, 0.25f, 1, 0xffffffff, wrr, wrb, 0.25f, 1, 0xffffffff);
-		if (window.unhandled_mouse_press[MOUSEBL]) {
-			wg->selected_region_x = rl;
-			wg->selected_region_y = rt;
-		}
-	}
-
 	gui_container_pop();
 
 	if (wg->focussed_img == wg->composite) {
@@ -627,6 +590,46 @@ overworld_generation_gl_frame(void *wg_)
 			wg->focussed_img = wg->lithosphere;
 		}
 	}
+
+	/*
+	 * Show the user details about a composite region and perform region
+	 * selection.
+	 */
+	gui_container_push(&stack);
+	if (wg->focussed_img == wg->composite && wg->composite) {
+		gui_text("Left click to select region", normal_text_opts);
+		gui_stack_break(&stack);
+		/* Determine the 512x512 region highlighted */
+		float rl, rr, rt, rb; /* world coords */
+		float wrl, wrr, wrt, wrb; /* window coords */
+		{
+			float scale = LITHOSPHERE_LEN / (float)wg->stream_size;
+			float zoom = wg->map_zoom * scale;
+			const unsigned region_size = 512;
+			float tx = wg->map_tran_x * wg->stream_size;
+			float ty = wg->map_tran_y * wg->stream_size;
+			rl = window.mouse_x / zoom + tx;
+			rt = window.mouse_y / zoom + ty;
+			rl = floorf(rl / region_size) * region_size;
+			rt = floorf(rt / region_size) * region_size;
+			rr = rl + region_size;
+			rb = rt + region_size;
+			wrl = (rl - tx) * zoom;
+			wrr = (rr - tx) * zoom;
+			wrt = (rt - ty) * zoom;
+			wrb = (rb - ty) * zoom;
+		}
+		/* Highlight the region with a white box */
+		gui_line(wrl, wrt, 0.25f, 1, 0xffffffff, wrl, wrb, 0.25f, 1, 0xffffffff);
+		gui_line(wrr, wrt, 0.25f, 1, 0xffffffff, wrr, wrb, 0.25f, 1, 0xffffffff);
+		gui_line(wrl, wrt, 0.25f, 1, 0xffffffff, wrr, wrt, 0.25f, 1, 0xffffffff);
+		gui_line(wrl, wrb, 0.25f, 1, 0xffffffff, wrr, wrb, 0.25f, 1, 0xffffffff);
+		if (window.unhandled_mouse_press[MOUSEBL]) {
+			wg->selected_region_x = rl;
+			wg->selected_region_y = rt;
+		}
+	}
+	gui_container_pop();
 
 	/* Handle after UI has a chance to steal mouse event */
 	if (window.unhandled_mouse_press[MOUSEBM]) {

@@ -118,7 +118,7 @@ static void window_draw_frame_timing(void)
 	char label[32];
 	/* Median */
 	gui_line(0, avgy, z, 1, 0xff0000ff, FRAME_TIMING_LEN, avgy, z, 1, 0xffff00ff);
-	snprintf(label, 32, "%fms avg", avg_cpu_ns / 1000000);
+	snprintf(label, 32, "%ldms avg", lroundf(avg_cpu_ns / 1000000));
 	gui_text(label, (struct text_opts) {
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = FRAME_TIMING_LEN + 1,
@@ -129,7 +129,7 @@ static void window_draw_frame_timing(void)
 	});
 	/* Max */
 	gui_line(0, 1, z, 1, 0xff0000ff, FRAME_TIMING_LEN, 1, z, 1, 0xff0000ff);
-	snprintf(label, 32, "%fms max", max_cpu_ns / 1000000);
+	snprintf(label, 32, "%ldms max", lroundf(max_cpu_ns / 1000000));
 	gui_text(label, (struct text_opts) {
 		TEXT_OPTS_DEFAULTS,
 		.xoffset = FRAME_TIMING_LEN + 1,
