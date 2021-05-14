@@ -324,7 +324,7 @@ stream_graph_update(struct stream_graph *g)
 		struct stream_node *src = &g->nodes[ni];
 		struct stream_node *dst = &g->nodes[arc->receiver];
 		float d = src->height - dst->height;
-		const float talus = 0.1f + src->precip * (1 - src->temp) / 2;
+		const float talus = 0.3f;
 		if (d > talus) {
 			float xfer = (d - talus) / 4;
 			dst->height += xfer;
