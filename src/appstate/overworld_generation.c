@@ -11,6 +11,7 @@
 #include "hammer/window.h"
 #include "hammer/worldgen/biome.h"
 #include "hammer/worldgen/climate.h"
+#include "hammer/worldgen/region.h"
 #include "hammer/worldgen/stream.h"
 #include "hammer/worldgen/tectonic.h"
 
@@ -144,8 +145,7 @@ viz_lithosphere_loop(DL_TASK_ARGS)
 
 	size_t steps = wg->tectonic_opts.generations *
 	                 wg->tectonic_opts.generation_steps;
-	if (wg->lithosphere->generation >= steps)
-	{
+	if (wg->lithosphere->generation >= steps) {
 		/* Kick off climate loop */
 		wg->climate = xmalloc(sizeof(*wg->climate));
 		wg->focussed_img = wg->climate;
@@ -599,21 +599,20 @@ overworld_generation_gl_frame(void *wg_)
 	if (wg->focussed_img == wg->composite && wg->composite) {
 		gui_text("Left click to select region", normal_text_opts);
 		gui_stack_break(&stack);
-		/* Determine the 512x512 region highlighted */
+		/* Determine the region highlighted */
 		float rl, rr, rt, rb; /* world coords */
 		float wrl, wrr, wrt, wrb; /* window coords */
 		{
 			float scale = LITHOSPHERE_LEN / (float)wg->stream_size;
 			float zoom = wg->map_zoom * scale;
-			const unsigned region_size = 512;
 			float tx = wg->map_tran_x * wg->stream_size;
 			float ty = wg->map_tran_y * wg->stream_size;
 			rl = window.mouse_x / zoom + tx;
 			rt = window.mouse_y / zoom + ty;
-			rl = floorf(rl / region_size) * region_size;
-			rt = floorf(rt / region_size) * region_size;
-			rr = rl + region_size;
-			rb = rt + region_size;
+			rl = floorf(rl / OVERWORLD_REGION_LEN) * OVERWORLD_REGION_LEN;
+			rt = floorf(rt / OVERWORLD_REGION_LEN) * OVERWORLD_REGION_LEN;
+			rr = rl + OVERWORLD_REGION_LEN;
+			rb = rt + OVERWORLD_REGION_LEN;
 			wrl = (rl - tx) * zoom;
 			wrr = (rr - tx) * zoom;
 			wrt = (rt - ty) * zoom;
@@ -805,64 +804,75 @@ overworld_generation_gl_blit_stream_image(void *wg_)
 	return 0;
 }
 
-static void
-baryw(struct stream_node *n[3], float w[3], long x, long y)
-{
-	float d = 1 / ((n[1]->y - n[2]->y) * (n[0]->x - n[2]->x) +
-	               (n[2]->x - n[1]->x) * (n[0]->y - n[2]->y));
-	w[0] = d * ((n[1]->y - n[2]->y) * (x - n[2]->x) +
-	            (n[2]->x - n[1]->x) * (y - n[2]->y));
-	w[1] = d * ((n[2]->y - n[0]->y) * (x - n[2]->x) +
-	            (n[0]->x - n[2]->x) * (y - n[2]->y));
-	w[2] = 1 - w[0] - w[1];
-}
-
 static int
 overworld_generation_gl_blit_composite_image(void *wg_)
 {
 	struct overworld_generation_appstate *wg = wg_;
 	struct stream_graph *s = wg->stream;
-	GLubyte *img = xmalloc(s->size * s->size * sizeof(*img) * 3);
+	GLubyte *img = xcalloc(s->size * s->size * 3, sizeof(*img));
 
+	/*
+	 * NOTE: This is *exactly* the same code we use to splat region height
+	 * in worldgen/region.c
+	 */
 	size_t tri_count = vector_size(s->tris);
 	const float cs = wg->stream_size / CLIMATE_LEN;
 	for (size_t ti = 0; ti < tri_count; ++ ti) {
 		struct stream_tri *tri = &s->tris[ti];
-		struct stream_node *n[3] = {
-			&s->nodes[tri->a],
-			&s->nodes[tri->b],
-			&s->nodes[tri->c]
+		struct stream_node n[3] = {
+			s->nodes[tri->a],
+			s->nodes[tri->b],
+			s->nodes[tri->c]
 		};
+		/* Determine lake height of triangle */
 		float max_lake = 0;
 		for (size_t i = 0; i < 3; ++ i)
-			max_lake = MAX(max_lake, s->trees[n[i]->tree].pass_to_receiver);
-		long l = floorf(MIN(n[0]->x, MIN(n[1]->x, n[2]->x)));
-		long r =  ceilf(MAX(n[0]->x, MAX(n[1]->x, n[2]->x)));
-		long t = floorf(MIN(n[0]->y, MIN(n[1]->y, n[2]->y)));
-		long b =  ceilf(MAX(n[0]->y, MAX(n[1]->y, n[2]->y)));
-		if (labs(l - r) > 32 || labs(t - b) > 32)
-			continue; /* XXX Don't handle wrapping */
-		for (long y = t; y <= b; ++ y)
-		for (long x = l; x <= r; ++ x) {
+			max_lake = MAX(max_lake, s->trees[n[i].tree].pass_to_receiver);
+		/*
+		 * In order to draw triangles that straddle the map border we
+		 * need to project those positions either negative, or beyond
+		 * the bounds of the map before calculating the bounding box
+		 * of the triangle.
+		 *
+		 * Two points on a triangle should never be further away than
+		 * wrap_delta. If they are, reproject the third point by
+		 * adding or subtracting the size of the stream graph.
+		 */
+		const float wrap_delta = 512;
+		#define NORMALIZE_NODE(N,A) do {                             \
+			float d1 = n[N].A - n[(N+1)%3].A;                    \
+			float d2 = n[N].A - n[(N+2)%3].A;                    \
+			if (fabsf(d1) > wrap_delta && fabsf(d2) > wrap_delta)\
+				n[N].A -= s->size * signf(d1);               \
+		} while (0)
+		NORMALIZE_NODE(0, x);
+		NORMALIZE_NODE(0, y);
+		NORMALIZE_NODE(1, x);
+		NORMALIZE_NODE(1, y);
+		NORMALIZE_NODE(2, x);
+		NORMALIZE_NODE(2, y);
+		#undef NORMALIZE_NODE
+		long l = floorf(MIN(n[0].x, MIN(n[1].x, n[2].x)));
+		long r =  ceilf(MAX(n[0].x, MAX(n[1].x, n[2].x)));
+		long t = floorf(MIN(n[0].y, MIN(n[1].y, n[2].y)));
+		long b =  ceilf(MAX(n[0].y, MAX(n[1].y, n[2].y)));
+		/* "raw" coordinates may exceed map bounds */
+		for (long ry = t; ry <= b; ++ ry)
+		for (long rx = l; rx <= r; ++ rx) {
+			long wy = STREAM_WRAP(s, ry);
+			long wx = STREAM_WRAP(s, rx);
 			float w[3] = { 0, 0, 0 };
-			baryw(n, w, x, y);
+			stream_node_barycentric_weights(&n[0], &n[1], &n[2], w, rx, ry);
 			if (w[0] < 0 || w[1] < 0 || w[2] < 0)
 				continue;
-			/* fast wrap since size is power of two */
-			long wx = (x + s->size) & (s->size - 1);
-			long wy = (y + s->size) & (s->size - 1);
 			size_t i = wy * s->size + wx;
 			float temp = 1 - lerp_climate_layer(wg->climate->inv_temp, wx, wy, cs);
 			float precip = lerp_climate_layer(wg->climate->precipitation, wx, wy, cs);
-			float elev = n[0]->height * w[0] + n[1]->height * w[1] + n[2]->height * w[2];
-			if (elev < max_lake) {
-				img[i*3+0] = biome_color[BIOME_OCEAN][0];
-				img[i*3+1] = biome_color[BIOME_OCEAN][1];
-				img[i*3+2] = biome_color[BIOME_OCEAN][2];
-			} else {
-				enum biome b = biome_class(elev, temp, precip);
-				memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
-			}
+			float elev = n[0].height * w[0] + n[1].height * w[1] + n[2].height * w[2];
+			enum biome b = biome_class(elev, temp, precip);
+			if (elev < max_lake)
+				b = BIOME_OCEAN;
+			memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
 			float shading;
 			/* Very basic diffuse factor [0.25,1] */
 			{
@@ -874,14 +884,14 @@ overworld_generation_gl_blit_composite_image(void *wg_)
 				};
 				float normal[3];
 				float a[3] = {
-					n[2]->x - n[1]->x,
-					n[2]->y - n[1]->y,
-					5 * (n[2]->height - n[1]->height)
+					n[2].x - n[1].x,
+					n[2].y - n[1].y,
+					5 * (n[2].height - n[1].height)
 				};
 				float b[3] = {
-					n[1]->x - n[0]->x,
-					n[1]->y - n[0]->y,
-					5 * (n[1]->height - n[0]->height)
+					n[1].x - n[0].x,
+					n[1].y - n[0].y,
+					5 * (n[1].height - n[0].height)
 				};
 				normal[0] = a[1] * b[2] - a[2] * b[1];
 				normal[1] = a[2] * b[0] - a[0] * b[2];

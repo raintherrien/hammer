@@ -79,4 +79,23 @@ void stream_graph_create(struct stream_graph *,
 void stream_graph_destroy(struct stream_graph *);
 void stream_graph_update(struct stream_graph *);
 
+/* fast wrap since size is power of two */
+#define STREAM_WRAP(S, X) (((X) + (S)->size) & ((S)->size - 1))
+
+static inline void
+stream_node_barycentric_weights(const struct stream_node *n0,
+                                const struct stream_node *n1,
+                                const struct stream_node *n2,
+                                float w[3],
+                                float x, float y)
+{
+	float d = 1 / ((n1->y - n2->y) * (n0->x - n2->x) +
+	               (n2->x - n1->x) * (n0->y - n2->y));
+	w[0] = d * ((n1->y - n2->y) * (x - n2->x) +
+	            (n2->x - n1->x) * (y - n2->y));
+	w[1] = d * ((n2->y - n0->y) * (x - n2->x) +
+	            (n0->x - n2->x) * (y - n2->y));
+	w[2] = 1 - w[0] - w[1];
+}
+
 #endif /* HAMMER_WORLDGEN_STREAM_H_ */

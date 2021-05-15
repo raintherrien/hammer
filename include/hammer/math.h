@@ -44,4 +44,10 @@ wrapidx(long long index, unsigned long size)
 	return index % size;
 }
 
+static inline float
+signf(float x)
+{
+	return x < 0 ? -1 : x > 0;
+}
+
 #endif /* HAMMER_MATH_H_ */

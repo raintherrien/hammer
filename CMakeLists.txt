@@ -44,6 +44,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/gui/text.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/biome.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/region.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/stream.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
                    ${PROJECT_SOURCE_DIR}/src/cli.c
