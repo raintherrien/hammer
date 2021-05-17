@@ -37,6 +37,7 @@ struct overworld_generation_appstate {
 	float                map_tran_y;
 	float                selected_region_x;
 	float                selected_region_y;
+	unsigned             selected_region_size_mag2;
 	GLuint               lithosphere_img;
 	GLuint               climate_img;
 	GLuint               stream_img;
@@ -103,6 +104,7 @@ overworld_generation_entry(DL_TASK_ARGS)
 	wg->map_tran_y = 0;
 	wg->selected_region_x = FLT_MAX;
 	wg->selected_region_y = FLT_MAX;
+	wg->selected_region_size_mag2 = 0;
 
 	/* Kick off lithosphere loop */
 	wg->lithosphere = xmalloc(sizeof(*wg->lithosphere));
@@ -240,7 +242,10 @@ viz_composite_loop(DL_TASK_ARGS)
 			wg->climate,
 			wg->lithosphere,
 			wg->stream,
-			&wg->world_opts);
+			&wg->world_opts,
+			wg->selected_region_x,
+			wg->selected_region_y,
+			STREAM_REGION_SIZE_MIN * (1 << wg->selected_region_size_mag2));
 		dlcontinuation(&wg->task, post_region_generation);
 		dlwait(&wg->task, 1);
 		dlnext(next, &wg->task);
@@ -343,12 +348,19 @@ overworld_generation_gl_frame(void *wg_)
 {
 	struct overworld_generation_appstate *wg = wg_;
 
-	if (window.resized) {
-		wg->min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
-				       (float)window.height / LITHOSPHERE_LEN);
-		wg->map_zoom = wg->min_map_zoom;
+	wg->min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
+	                       (float)window.height / LITHOSPHERE_LEN);
+	wg->map_zoom = MAX(wg->min_map_zoom, wg->map_zoom);
+
+	if (window.scroll && (window.keymod & KMOD_LCTRL ||
+	                      window.keymod & KMOD_RCTRL))
+	{
+		wg->selected_region_size_mag2 =
+			CLAMP(wg->selected_region_size_mag2 - signf(window.scroll),
+			      0, MIN(wg->world_opts.scale, STREAM_REGION_SIZE_MAX_MAG2));
 	}
-	if (window.scroll != 0) {
+	else if (window.scroll)
+	{
 		float delta = window.scroll / 10.0f;
 		if (wg->map_zoom + delta < wg->min_map_zoom)
 			delta = wg->min_map_zoom - wg->map_zoom;
@@ -417,7 +429,7 @@ overworld_generation_gl_frame(void *wg_)
 
 	const struct map_opts map_opts = {
 		MAP_OPTS_DEFAULTS,
-		.zoffset = -1,
+		.zoffset = 99, /* background */
 		.width  = window.width,
 		.height = window.height,
 		.scale_x = wg->map_zoom * (LITHOSPHERE_LEN / (float)window.width),
@@ -458,6 +470,10 @@ overworld_generation_gl_frame(void *wg_)
 	gui_text("World Generation", bold_text_opts);
 	gui_stack_break(&stack);
 	gui_text("Scroll to zoom - Hold middle mouse to pan", small_text_opts);
+	gui_stack_break(&stack);
+	char seed_label[64];
+	snprintf(seed_label, 64, "Seed: %llu", wg->world_opts.seed);
+	gui_text(seed_label, normal_text_opts);
 	gui_stack_break(&stack);
 	gui_text(wg->lithosphere_progress_str, normal_text_opts);
 	gui_stack_break(&stack);
@@ -599,33 +615,53 @@ overworld_generation_gl_frame(void *wg_)
 	if (wg->focussed_img == wg->composite && wg->composite) {
 		gui_text("Left click to select region", normal_text_opts);
 		gui_stack_break(&stack);
+		gui_text("Ctrl+scroll to resize region", normal_text_opts);
+		gui_stack_break(&stack);
 		/* Determine the region highlighted */
 		float rl, rr, rt, rb; /* world coords */
 		float wrl, wrr, wrt, wrb; /* window coords */
+		unsigned stream_region_size = STREAM_REGION_SIZE_MIN *
+		                              (1 << wg->selected_region_size_mag2);
 		{
 			float scale = LITHOSPHERE_LEN / (float)wg->stream_size;
 			float zoom = wg->map_zoom * scale;
 			float tx = wg->map_tran_x * wg->stream_size;
 			float ty = wg->map_tran_y * wg->stream_size;
-			rl = window.mouse_x / zoom + tx;
-			rt = window.mouse_y / zoom + ty;
-			rl = floorf(rl / OVERWORLD_REGION_LEN) * OVERWORLD_REGION_LEN;
-			rt = floorf(rt / OVERWORLD_REGION_LEN) * OVERWORLD_REGION_LEN;
-			rr = rl + OVERWORLD_REGION_LEN;
-			rb = rt + OVERWORLD_REGION_LEN;
+			rl = window.mouse_x / zoom + tx - stream_region_size / 2;
+			rt = window.mouse_y / zoom + ty - stream_region_size / 2;
+			/* If we wanted to snap
+			rl = floorf(rl / stream_region_size) * stream_region_size;
+			rt = floorf(rt / stream_region_size) * stream_region_size;
+			*/
+			rr = rl + stream_region_size;
+			rb = rt + stream_region_size;
 			wrl = (rl - tx) * zoom;
 			wrr = (rr - tx) * zoom;
 			wrt = (rt - ty) * zoom;
 			wrb = (rb - ty) * zoom;
 		}
+		gui_container_pop();
+		char region_size_label[64];
+		size_t region_size = REGION_UPSCALE *
+		                     STREAM_REGION_SIZE_MIN *
+		                     (1 << wg->selected_region_size_mag2);
+		snprintf(region_size_label, 64, "%zux%zu", region_size, region_size);
+		gui_text(region_size_label, (struct text_opts) {
+			TEXT_OPTS_DEFAULTS,
+			.xoffset = wrl+1,
+			.yoffset = wrt+1,
+			.zoffset = 1,
+			.size = 20
+		});
+		gui_container_push(&stack);
 		/* Highlight the region with a white box */
-		gui_line(wrl, wrt, 0.25f, 1, 0xffffffff, wrl, wrb, 0.25f, 1, 0xffffffff);
-		gui_line(wrr, wrt, 0.25f, 1, 0xffffffff, wrr, wrb, 0.25f, 1, 0xffffffff);
-		gui_line(wrl, wrt, 0.25f, 1, 0xffffffff, wrr, wrt, 0.25f, 1, 0xffffffff);
-		gui_line(wrl, wrb, 0.25f, 1, 0xffffffff, wrr, wrb, 0.25f, 1, 0xffffffff);
+		gui_line(wrl, wrt, 98, 1, 0xffffffff, wrl, wrb, 98, 1, 0xffffffff);
+		gui_line(wrr, wrt, 98, 1, 0xffffffff, wrr, wrb, 98, 1, 0xffffffff);
+		gui_line(wrl, wrt, 98, 1, 0xffffffff, wrr, wrt, 98, 1, 0xffffffff);
+		gui_line(wrl, wrb, 98, 1, 0xffffffff, wrr, wrb, 98, 1, 0xffffffff);
 		if (window.unhandled_mouse_press[MOUSEBL]) {
-			wg->selected_region_x = rl;
-			wg->selected_region_y = rt;
+			wg->selected_region_x = wrapidx(rl, wg->stream_size);
+			wg->selected_region_y = wrapidx(rt, wg->stream_size);
 		}
 	}
 	gui_container_pop();
@@ -812,7 +848,7 @@ overworld_generation_gl_blit_composite_image(void *wg_)
 	GLubyte *img = xcalloc(s->size * s->size * 3, sizeof(*img));
 
 	/*
-	 * NOTE: This is *exactly* the same code we use to splat region height
+	 * NOTE: This is *exactly* the same code we use to blit region height
 	 * in worldgen/region.c
 	 */
 	size_t tri_count = vector_size(s->tris);
@@ -886,12 +922,12 @@ overworld_generation_gl_blit_composite_image(void *wg_)
 				float a[3] = {
 					n[2].x - n[1].x,
 					n[2].y - n[1].y,
-					5 * (n[2].height - n[1].height)
+					n[2].height - n[1].height
 				};
 				float b[3] = {
 					n[1].x - n[0].x,
 					n[1].y - n[0].y,
-					5 * (n[1].height - n[0].height)
+					n[1].height - n[0].height
 				};
 				normal[0] = a[1] * b[2] - a[2] * b[1];
 				normal[1] = a[2] * b[0] - a[0] * b[2];

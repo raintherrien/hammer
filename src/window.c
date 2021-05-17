@@ -357,8 +357,12 @@ window_acquire_next_frame(void)
 	window.mouse_held[MOUSEBR] = ms & SDL_BUTTON(SDL_BUTTON_RIGHT);
 	window.mouse_held[MOUSEBM] = ms & SDL_BUTTON(SDL_BUTTON_MIDDLE);
 
-	/* 0,0 top left */
-	glm_ortho(0, window.width, window.height, 0, -100, 100, window.ortho_matrix);
+	/*
+	 * Orthographic coordinates use top left 0,0.
+	 * glm_ortho *negates* near and far, however we want to only render
+	 * GUI elements *behind* the camera (positive Z).
+	 */
+	glm_ortho(0, window.width, window.height, 0, -1, -100, window.ortho_matrix);
 }
 
 void

@@ -1,8 +1,29 @@
 #include "hammer/appstate/region_generation.h"
+#include "hammer/error.h"
+#include "hammer/glsl.h"
 #include "hammer/glthread.h"
 #include "hammer/gui.h"
+#include "hammer/math.h"
 #include "hammer/mem.h"
 #include "hammer/window.h"
+#include "hammer/worldgen/region.h"
+#include <cglm/affine.h>
+#include <cglm/cam.h>
+
+/* TODO: Images never freed, mouse never potentially released */
+
+struct region_renderer {
+	GLuint shader;
+	GLuint vao;
+	GLuint vbo;
+	GLuint heightmap_img;
+	struct {
+		GLuint mvp;
+		GLuint heightmap_sampler;
+		GLuint width;
+	} uniforms;
+	float render_width;
+};
 
 struct region_generation_appstate {
 	dltask                     task;
@@ -10,23 +31,37 @@ struct region_generation_appstate {
 	const struct lithosphere  *lithosphere;
 	const struct stream_graph *stream_graph;
 	const struct world_opts   *world_opts;
+	struct region              region;
+	struct region_renderer     renderer;
+	float                      yaw, pitch;
+	unsigned                   stream_coord_left;
+	unsigned                   stream_coord_top;
+	unsigned                   stream_region_size;
+	unsigned                   generations;
 	int                        cancel_btn_state;
+	int                        mouse_captured;
 };
 
 static void region_generation_entry(DL_TASK_ARGS);
 static void region_generation_exit(DL_TASK_ARGS);
 
-static int region_generation_gl_setup(void *);
+static int region_generation_gl_create(void *);
+static int region_generation_gl_destroy(void *);
 static int region_generation_gl_frame(void *);
 
 static void viz_region_loop(DL_TASK_ARGS);
+
+static int region_generation_gl_blit_heightmap(void *);
 
 dltask *
 region_generation_appstate_alloc_detached(
 	const struct climate *climate,
 	const struct lithosphere *lithosphere,
 	const struct stream_graph *stream_graph,
-	const struct world_opts *world_opts)
+	const struct world_opts *world_opts,
+	unsigned stream_coord_left,
+	unsigned stream_coord_top,
+	unsigned stream_region_size)
 {
 	struct region_generation_appstate *rg = xmalloc(sizeof(*rg));
 	rg->task         = DL_TASK_INIT(region_generation_entry);
@@ -34,6 +69,10 @@ region_generation_appstate_alloc_detached(
 	rg->lithosphere  = lithosphere;
 	rg->stream_graph = stream_graph;
 	rg->world_opts   = world_opts;
+	memset(&rg->region, 0, sizeof(rg->region));
+	rg->stream_coord_left = stream_coord_left;
+	rg->stream_coord_top = stream_coord_top;
+	rg->stream_region_size = stream_region_size;
 	return &rg->task;
 }
 
@@ -41,8 +80,17 @@ static void
 region_generation_entry(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY(struct region_generation_appstate, rg, task);
+	rg->generations = 0;
 	rg->cancel_btn_state = 0;
-	glthread_execute(region_generation_gl_setup, rg);
+	rg->mouse_captured = 0;
+	region_create(&rg->region,
+	              rg->stream_coord_left,
+	              rg->stream_coord_top,
+	              rg->stream_region_size,
+	              rg->stream_graph);
+	rg->yaw = -M_PI / 2;
+	rg->pitch = -FLT_EPSILON;
+	glthread_execute(region_generation_gl_create, rg);
 	dltail(&rg->task, viz_region_loop);
 }
 
@@ -50,6 +98,8 @@ static void
 region_generation_exit(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY(struct region_generation_appstate, rg, task);
+	glthread_execute(region_generation_gl_destroy, rg);
+	region_destroy(&rg->region);
 	free(rg);
 }
 
@@ -65,14 +115,102 @@ viz_region_loop(DL_TASK_ARGS)
 		return;
 	}
 
+	if (rg->generations >= REGION_GENERATIONS) {
+		/* TODO: Something */
+	} else {
+		++ rg->generations;
+		region_erode(&rg->region);
+		glthread_execute(region_generation_gl_blit_heightmap, rg);
+	}
+
 	dltail(&rg->task, viz_region_loop);
 }
 
 static int
-region_generation_gl_setup(void *rg_)
+region_generation_gl_create(void *rg_)
 {
-	(void)rg_;
+	struct region_generation_appstate *rg = rg_;
+	struct region_renderer *renderer = &rg->renderer;
+
+	renderer->render_width = 100.0f;
+	renderer->shader = compile_shader_program(
+	                     "resources/shaders/region.vs",
+	                     "resources/shaders/region.gs",
+	                     "resources/shaders/region.fs");
+	if (renderer->shader == 0)
+		xpanic("Error creating region shader");
+	glUseProgram(renderer->shader);
+
+	renderer->uniforms.mvp = glGetUniformLocation(renderer->shader, "mvp");
+	renderer->uniforms.heightmap_sampler = glGetUniformLocation(renderer->shader, "heightmap_sampler");
+	renderer->uniforms.width = glGetUniformLocation(renderer->shader, "width");
+
+	GLfloat *vertices = xcalloc(rg->region.size * rg->region.size * 2 * 6, sizeof(*vertices));
+
+	for (size_t y = 0; y < rg->region.size; ++ y)
+	for (size_t x = 0; x < rg->region.size; ++ x) {
+		size_t i = y * rg->region.size + x;
+		const float scale = renderer->render_width / rg->region.size;
+		GLfloat tris[6][2] = {
+			{ (x+0) * scale, (y+0) * scale },
+			{ (x+0) * scale, (y+1) * scale },
+			{ (x+1) * scale, (y+1) * scale },
+
+			{ (x+1) * scale, (y+1) * scale },
+			{ (x+1) * scale, (y+0) * scale },
+			{ (x+0) * scale, (y+0) * scale }
+		};
+		memcpy(vertices + i * 2 * 6, tris, 2 * 6 * sizeof(*vertices));
+	}
+
+	glGenVertexArrays(1, &renderer->vao);
+	glBindVertexArray(renderer->vao);
+	glGenBuffers(1, &renderer->vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(*vertices)*2, NULL);
+	glBufferData(GL_ARRAY_BUFFER,
+	             rg->region.size * rg->region.size * 2 * 6 * sizeof(*vertices),
+	             vertices,
+	             GL_STATIC_DRAW);
+
+	free(vertices);
+
+	glGenTextures(1, &renderer->heightmap_img);
+	glBindTexture(GL_TEXTURE_2D, renderer->heightmap_img);
+	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
+	                            GL_R32F,
+	                            rg->region.size, rg->region.size,
+	                            0, /* border */
+	                            GL_RED,
+	                            GL_FLOAT,
+	                            NULL);
+	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_MAX_LEVEL, 0);
+	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glGenerateTextureMipmap(renderer->heightmap_img);
+
+	/* Constant uniform values */
+	glUniform1f(renderer->uniforms.width, renderer->render_width);
+	glUniform1i(renderer->uniforms.heightmap_sampler, 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, renderer->heightmap_img);
+
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
+
+	return 0;
+}
+
+static int
+region_generation_gl_destroy(void *rg_)
+{
+	struct region_generation_appstate *rg = rg_;
+
+	glDeleteVertexArrays(1, &rg->renderer.vao);
+	glDeleteProgram(rg->renderer.shader);
+
 	return 0;
 }
 
@@ -80,6 +218,16 @@ static int
 region_generation_gl_frame(void *rg_)
 {
 	struct region_generation_appstate *rg = rg_;
+
+	if (rg->mouse_captured) {
+		if (!window.mouse_held[MOUSEBM]) {
+			rg->mouse_captured = 0;
+			window_unlock_mouse();
+		}
+		rg->yaw   += window.motion_x / 100.0f;
+		rg->pitch += window.motion_y / 100.0f;
+		rg->pitch = CLAMP(rg->pitch, -M_PI/2, -FLT_EPSILON);
+	}
 
 	unsigned font_size = 24;
 	unsigned border_padding = 32;
@@ -131,7 +279,53 @@ region_generation_gl_frame(void *rg_)
 	rg->cancel_btn_state = gui_btn(rg->cancel_btn_state, "Cancel", btn_opts);
 	gui_stack_break(&stack);
 
+	/* Handle after UI has a chance to steal mouse event */
+	if (window.unhandled_mouse_press[MOUSEBM]) {
+		window.unhandled_mouse_press[MOUSEBM] = 0;
+		rg->mouse_captured = 1;
+		window_lock_mouse();
+	}
+
+	mat4 model, view, proj, mvp;
+	glm_translate_make(model, (vec3) {
+		-rg->renderer.render_width / 2.0f,
+		0,
+		-rg->renderer.render_width / 2.0f
+	});
+	float aspect = window.width / (float)window.height;
+	glm_perspective(glm_rad(60), aspect, 1, 1000, proj);
+	glm_lookat((vec3){100 * sinf(rg->pitch) * cosf(rg->yaw),
+	                  100 * cosf(rg->pitch),
+	                  100 * sinf(rg->pitch) * sinf(rg->yaw)},
+	           (vec3){0, 0, 0},
+	           (vec3){0, 1, 0},
+	           view);
+	glm_mat4_mulN((mat4 *[]){&proj, &view, &model}, 3, mvp);
+
+	glUseProgram(rg->renderer.shader);
+	glBindVertexArray(rg->renderer.vao);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, rg->renderer.heightmap_img);
+	glUniformMatrix4fv(rg->renderer.uniforms.mvp, 1, GL_FALSE, (float *)mvp);
+	glBindBuffer(GL_ARRAY_BUFFER, rg->renderer.vbo);
+	glDrawArrays(GL_TRIANGLES, 0, rg->region.size * rg->region.size * 6);
+
 	gui_container_pop();
 	window_submitframe();
 	return window.should_close;
+}
+
+static int
+region_generation_gl_blit_heightmap(void *rg_)
+{
+	struct region_generation_appstate *rg = rg_;
+
+	glTextureSubImage2D(rg->renderer.heightmap_img,
+	                    0, /* level */
+	                    0, 0, /* x,y offset */
+	                    rg->region.size, rg->region.size, /* w,h */
+	                    GL_RED, GL_FLOAT,
+	                    rg->region.height);
+
+	return 0;
 }

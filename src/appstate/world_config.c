@@ -40,7 +40,7 @@ world_config_appstate_alloc_detached(void)
 	world_config->task = DL_TASK_INIT(world_config_entry);
 	world_config->opts = (struct world_opts) {
 		.seed = random_seed(),
-		.scale = 4
+		.scale = 3
 	};
 	return &world_config->task;
 }
@@ -52,7 +52,7 @@ world_config_entry(DL_TASK_ARGS)
 
 	glthread_execute(world_config_gl_setup, world_config);
 	snprintf(world_config->seed_edit_buf, NUM_EDIT_BUFFER_LEN,
-	         "%lld", world_config->opts.seed);
+	         "%llu", world_config->opts.seed);
 	world_config->next_btn_state = 0;
 	world_config->exit_btn_state = 0;
 	world_config->scale = world_config->opts.scale;
