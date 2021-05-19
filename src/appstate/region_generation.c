@@ -17,12 +17,15 @@ struct region_renderer {
 	GLuint vao;
 	GLuint vbo;
 	GLuint heightmap_img;
+	GLuint waterheight_img;
 	struct {
 		GLuint mvp;
 		GLuint heightmap_sampler;
+		GLuint waterheight_sampler;
 		GLuint width;
 	} uniforms;
-	float render_width;
+	size_t render_size;
+	size_t render_verts;
 };
 
 struct region_generation_appstate {
@@ -132,7 +135,8 @@ region_generation_gl_create(void *rg_)
 	struct region_generation_appstate *rg = rg_;
 	struct region_renderer *renderer = &rg->renderer;
 
-	renderer->render_width = 100.0f;
+	renderer->render_size = 512;
+	renderer->render_verts = renderer->render_size * renderer->render_size * 6;
 	renderer->shader = compile_shader_program(
 	                     "resources/shaders/region.vs",
 	                     "resources/shaders/region.gs",
@@ -143,22 +147,22 @@ region_generation_gl_create(void *rg_)
 
 	renderer->uniforms.mvp = glGetUniformLocation(renderer->shader, "mvp");
 	renderer->uniforms.heightmap_sampler = glGetUniformLocation(renderer->shader, "heightmap_sampler");
+	renderer->uniforms.waterheight_sampler = glGetUniformLocation(renderer->shader, "waterheight_sampler");
 	renderer->uniforms.width = glGetUniformLocation(renderer->shader, "width");
 
-	GLfloat *vertices = xcalloc(rg->region.size * rg->region.size * 2 * 6, sizeof(*vertices));
+	GLfloat *vertices = xcalloc(renderer->render_verts * 2, sizeof(*vertices));
 
-	for (size_t y = 0; y < rg->region.size; ++ y)
-	for (size_t x = 0; x < rg->region.size; ++ x) {
-		size_t i = y * rg->region.size + x;
-		const float scale = renderer->render_width / rg->region.size;
+	for (size_t y = 0; y < renderer->render_size; ++ y)
+	for (size_t x = 0; x < renderer->render_size; ++ x) {
+		size_t i = y * renderer->render_size + x;
 		GLfloat tris[6][2] = {
-			{ (x+0) * scale, (y+0) * scale },
-			{ (x+0) * scale, (y+1) * scale },
-			{ (x+1) * scale, (y+1) * scale },
+			{ x+0, y+0 },
+			{ x+0, y+1 },
+			{ x+1, y+1 },
 
-			{ (x+1) * scale, (y+1) * scale },
-			{ (x+1) * scale, (y+0) * scale },
-			{ (x+0) * scale, (y+0) * scale }
+			{ x+1, y+1 },
+			{ x+1, y+0 },
+			{ x+0, y+0 }
 		};
 		memcpy(vertices + i * 2 * 6, tris, 2 * 6 * sizeof(*vertices));
 	}
@@ -170,7 +174,7 @@ region_generation_gl_create(void *rg_)
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(*vertices)*2, NULL);
 	glBufferData(GL_ARRAY_BUFFER,
-	             rg->region.size * rg->region.size * 2 * 6 * sizeof(*vertices),
+	             renderer->render_verts * 2 * sizeof(*vertices),
 	             vertices,
 	             GL_STATIC_DRAW);
 
@@ -192,11 +196,30 @@ region_generation_gl_create(void *rg_)
 	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	glGenerateTextureMipmap(renderer->heightmap_img);
 
+	glGenTextures(1, &renderer->waterheight_img);
+	glBindTexture(GL_TEXTURE_2D, renderer->waterheight_img);
+	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
+	                            GL_R32F,
+	                            rg->region.size, rg->region.size,
+	                            0, /* border */
+	                            GL_RED,
+	                            GL_FLOAT,
+	                            NULL);
+	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_MAX_LEVEL, 0);
+	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glGenerateTextureMipmap(renderer->waterheight_img);
+
 	/* Constant uniform values */
-	glUniform1f(renderer->uniforms.width, renderer->render_width);
+	glUniform1f(renderer->uniforms.width, renderer->render_size);
 	glUniform1i(renderer->uniforms.heightmap_sampler, 0);
+	glUniform1i(renderer->uniforms.waterheight_sampler, 1);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, renderer->heightmap_img);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, renderer->waterheight_img);
 
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
@@ -286,17 +309,14 @@ region_generation_gl_frame(void *rg_)
 		window_lock_mouse();
 	}
 
+	const float r = rg->renderer.render_size;
 	mat4 model, view, proj, mvp;
-	glm_translate_make(model, (vec3) {
-		-rg->renderer.render_width / 2.0f,
-		0,
-		-rg->renderer.render_width / 2.0f
-	});
+	glm_translate_make(model, (vec3) { -r / 2.0f, 0, -r / 2.0f });
 	float aspect = window.width / (float)window.height;
 	glm_perspective(glm_rad(60), aspect, 1, 1000, proj);
-	glm_lookat((vec3){100 * sinf(rg->pitch) * cosf(rg->yaw),
-	                  100 * cosf(rg->pitch),
-	                  100 * sinf(rg->pitch) * sinf(rg->yaw)},
+	glm_lookat((vec3){r * sinf(rg->pitch) * cosf(rg->yaw),
+	                  r * cosf(rg->pitch),
+	                  r * sinf(rg->pitch) * sinf(rg->yaw)},
 	           (vec3){0, 0, 0},
 	           (vec3){0, 1, 0},
 	           view);
@@ -308,7 +328,7 @@ region_generation_gl_frame(void *rg_)
 	glBindTexture(GL_TEXTURE_2D, rg->renderer.heightmap_img);
 	glUniformMatrix4fv(rg->renderer.uniforms.mvp, 1, GL_FALSE, (float *)mvp);
 	glBindBuffer(GL_ARRAY_BUFFER, rg->renderer.vbo);
-	glDrawArrays(GL_TRIANGLES, 0, rg->region.size * rg->region.size * 6);
+	glDrawArrays(GL_TRIANGLES, 0, rg->renderer.render_verts);
 
 	gui_container_pop();
 	window_submitframe();
@@ -326,6 +346,13 @@ region_generation_gl_blit_heightmap(void *rg_)
 	                    rg->region.size, rg->region.size, /* w,h */
 	                    GL_RED, GL_FLOAT,
 	                    rg->region.height);
+
+	glTextureSubImage2D(rg->renderer.waterheight_img,
+	                    0, /* level */
+	                    0, 0, /* x,y offset */
+	                    rg->region.size, rg->region.size, /* w,h */
+	                    GL_RED, GL_FLOAT,
+	                    rg->region.water);
 
 	return 0;
 }

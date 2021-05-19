@@ -12,6 +12,7 @@ struct stream_graph;
  * each axis.
  */
 #define REGION_UPSCALE 8
+#define REGION_HEIGHT_SCALE 5
 
 /*
  * Impose some sane limitations on the stream region size, which will be
@@ -37,12 +38,14 @@ struct stream_graph;
  */
 struct region {
         float *height;
+        float *water;
         size_t size;
         /*
          * Coordinates of the region within the stream graph (i.e. not taking
          * into account REGION_UPSCALE). Note that it's very likely the area
          * of our region will wrap around stream_graph->size.
          */
+        unsigned stream_region_size;
         unsigned stream_coord_left;
         unsigned stream_coord_top;
 };

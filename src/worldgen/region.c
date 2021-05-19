@@ -18,6 +18,8 @@ region_create(struct region *r,
 {
 	r->size = REGION_UPSCALE * (size_t)stream_region_size;
 	r->height = xcalloc(r->size * r->size, sizeof(*r->height));
+	r->water  = xcalloc(r->size * r->size, sizeof(*r->water));
+	r->stream_region_size = stream_region_size;
 	r->stream_coord_left = stream_coord_left;
 	r->stream_coord_top = stream_coord_top;
 	region_blit(r, s);
@@ -26,6 +28,7 @@ region_create(struct region *r,
 void
 region_destroy(struct region *r)
 {
+	free(r->water);
 	free(r->height);
 }
 
@@ -53,7 +56,39 @@ region_blit(struct region *r,
 			s->nodes[tri->c]
 		};
 
-		/* TODO: Early triangle discard */
+		/*
+		 * Very basic triangle discard. We have two sets of
+		 * coordinates along each axis to handle wrapping. We know the
+		 * base coordinates are within the map, however the farther
+		 * extent may wrap. If none of the three points fall into
+		 * either the x or y bounds (picture this as a plus symbol
+		 * extending from the region to the extent of the map) then
+		 * the triangle cannot intercept the region. This is simpler
+		 * than performing triangle-AABB intersection upon all four
+		 * potentially wrapped bounding boxes.
+		 */
+		{
+			float rl0 = r->stream_coord_left;
+			float rt0 = r->stream_coord_top;
+			float rr0 = r->stream_coord_left + r->stream_region_size;
+			float rb0 = r->stream_coord_top + r->stream_region_size;
+			float rl1 = rl0 - s->size;
+			float rr1 = rr0 - s->size;
+			float rt1 = rt0 - s->size;
+			float rb1 = rb0 - s->size;
+			for (size_t i = 0; i < 3; ++ i) {
+				if ((n[i].x >= rl0 && n[i].x <= rr0) ||
+				    (n[i].x >= rl1 && n[i].x <= rr1) ||
+				    (n[i].y >= rt0 && n[i].y <= rb0) ||
+				    (n[i].y >= rt1 && n[i].y <= rb1))
+				{
+					goto process_triangle;
+				}
+			}
+		}
+		continue;
+		process_triangle: ;
+
 
 		/* Determine lake height of triangle */
 		float max_lake = 0;
@@ -103,15 +138,21 @@ region_blit(struct region *r,
 			if (w[0] < 0 || w[1] < 0 || w[2] < 0)
 				continue;
 			float elev = n[0].height * w[0] + n[1].height * w[1] + n[2].height * w[2];
+			float water = n[0].drainage / 100000.0f * w[0] +
+			              n[1].drainage / 100000.0f * w[1] +
+			              n[2].drainage / 100000.0f * w[2];
 			if (elev < max_lake)
-				elev = max_lake;
+				water = max_lake - elev;
 			if (elev < TECTONIC_CONTINENT_MASS)
-				elev = TECTONIC_CONTINENT_MASS;
+				water = TECTONIC_CONTINENT_MASS - elev;
 
 			size_t i = wy * r->size + wx;
-			r->height[i] = elev;
+			r->height[i] = REGION_HEIGHT_SCALE * elev;
+			r->water[i] = REGION_HEIGHT_SCALE * water;
 		}
 	}
+
+	float *blurring[2] = { r->height, r->water };
 
 	/* Gaussian blur */
 	const long long gkl = REGION_UPSCALE * 2;
@@ -120,28 +161,29 @@ region_blit(struct region *r,
 	GAUSSIANK(gk, gksz);
 	float *blur_line = xmalloc(r->size * sizeof(*blur_line));
 
-	/* Blur temperature */
-	for (size_t y = 0; y < r->size; ++ y) {
-		for (size_t x = 0; x < r->size; ++ x) {
-			blur_line[x] = 0;
-			for (int g = 0; g < gksz; ++ g) {
-				size_t i = y * r->size + MIN(x+g-gkl, r->size-1);
-				blur_line[x] += gk[g] * r->height[i];
-			}
-		}
-		for (size_t x = 0; x < r->size; ++ x)
-			r->height[y * r->size + x] = blur_line[x];
-	}
-	for (size_t x = 0; x < r->size; ++ x) {
+	for (size_t l = 0; l < 2; ++ l) {
 		for (size_t y = 0; y < r->size; ++ y) {
-			blur_line[y] = 0;
-			for (int g = 0; g < gksz; ++ g) {
-				size_t i = MIN(y+g-gkl, r->size-1) * r->size + x;
-				blur_line[y] += gk[g] * r->height[i];
+			for (size_t x = 0; x < r->size; ++ x) {
+				blur_line[x] = 0;
+				for (int g = 0; g < gksz; ++ g) {
+					size_t i = y * r->size + MIN(x+g-gkl, r->size-1);
+					blur_line[x] += gk[g] * blurring[l][i];
+				}
 			}
+			for (size_t x = 0; x < r->size; ++ x)
+				blurring[l][y * r->size + x] = blur_line[x];
 		}
-		for (size_t y = 0; y < r->size; ++ y)
-			r->height[y * r->size + x] = blur_line[y];
+		for (size_t x = 0; x < r->size; ++ x) {
+			for (size_t y = 0; y < r->size; ++ y) {
+				blur_line[y] = 0;
+				for (int g = 0; g < gksz; ++ g) {
+					size_t i = MIN(y+g-gkl, r->size-1) * r->size + x;
+					blur_line[y] += gk[g] * blurring[l][i];
+				}
+			}
+			for (size_t y = 0; y < r->size; ++ y)
+				blurring[l][y * r->size + x] = blur_line[y];
+		}
 	}
 
 	free(blur_line);
