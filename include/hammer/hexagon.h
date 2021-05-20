@@ -29,13 +29,13 @@
  * axial coordinates to a two-dimensional array.
  *
  * Chunks are stored as rhombus a (again, see the article) and are indexed by
- * the (r,q) dimensions:
+ * the (q,r) dimensions:
  * (0,0) (1,0) (2,0) (3,0)
  *   (0,1) (1,1) (2,1) (3,1)
  *     (0,2) (1,2) (2,2) (3,2)
  *       (0,3) (1,3) (2,3) (3,3)
  * Notice that if you shift each row of hexagons by w/2 then (r,q) look an
- * awful lot like (x,y).
+ * awful lot like (x,z).
  */
 
 /*
@@ -44,11 +44,11 @@
  */
 static inline void
 hex_pixel_to_axial(float hex_width, float hex_size,
-                   float pixel_x, float pixel_y,
+                   float pixel_x, float pixel_z,
                    float *axial_q, float *axial_r)
 {
 	pixel_x = (pixel_x - hex_width / 2) / hex_width;
-	float t1 = pixel_y / hex_size;
+	float t1 = pixel_z / hex_size;
 	float t2 = floorf(pixel_x + t1);
 	*axial_r = floorf((floorf(t1 - pixel_x) + t2) / 3);
 	*axial_q = floorf((floorf(2 * pixel_x + 1) + t2) / 3) - *axial_r;
