@@ -151,9 +151,9 @@ region_generation_gl_create(void *rg_)
 
 	renderer->render_size = 512;
 	renderer->shader = compile_shader_program(
-	                     "resources/shaders/region.vs",
-	                     "resources/shaders/region.gs",
-	                     "resources/shaders/region.fs");
+	                     "resources/shaders/region_generation.vs",
+	                     "resources/shaders/region_generation.gs",
+	                     "resources/shaders/region_generation.fs");
 	if (renderer->shader == 0)
 		xpanic("Error creating region shader");
 	glUseProgram(renderer->shader);

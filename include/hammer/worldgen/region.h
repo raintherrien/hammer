@@ -24,8 +24,9 @@ struct stream_graph;
 
 /*
  * Number of hydraulic erosion steps during region generation.
+ * XXX: Erosion not implemented!
  */
-#define REGION_GENERATIONS 1024
+#define REGION_GENERATIONS 1
 
 /*
  * TODO: Explain region is a flat-topped hexagon, the 90 degree translation of
