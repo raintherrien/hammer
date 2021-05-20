@@ -1,6 +1,8 @@
 #ifndef HAMMER_GLTHREAD_H_
 #define HAMMER_GLTHREAD_H_
 
+#include <GL/glew.h>
+
 typedef int(*glthread_callback)(void *);
 
 void glthread_create(void);

@@ -618,47 +618,56 @@ overworld_generation_gl_frame(void *wg_)
 		gui_text("Ctrl+scroll to resize region", normal_text_opts);
 		gui_stack_break(&stack);
 		/* Determine the region highlighted */
-		float rl, rr, rt, rb; /* world coords */
-		float wrl, wrr, wrt, wrb; /* window coords */
-		unsigned stream_region_size = STREAM_REGION_SIZE_MIN *
-		                              (1 << wg->selected_region_size_mag2);
-		{
-			float scale = LITHOSPHERE_LEN / (float)wg->stream_size;
-			float zoom = wg->map_zoom * scale;
-			float tx = wg->map_tran_x * wg->stream_size;
-			float ty = wg->map_tran_y * wg->stream_size;
-			rl = window.mouse_x / zoom + tx - stream_region_size / 2;
-			rt = window.mouse_y / zoom + ty - stream_region_size / 2;
-			/* If we wanted to snap
-			rl = floorf(rl / stream_region_size) * stream_region_size;
-			rt = floorf(rt / stream_region_size) * stream_region_size;
-			*/
-			rr = rl + stream_region_size;
-			rb = rt + stream_region_size;
-			wrl = (rl - tx) * zoom;
-			wrr = (rr - tx) * zoom;
-			wrt = (rt - ty) * zoom;
-			wrb = (rb - ty) * zoom;
-		}
+		float stream_region_hex_size = STREAM_REGION_SIZE_MIN * (1 << wg->selected_region_size_mag2);
+		float stream_region_hex_width = stream_region_hex_size * 2;
+		float stream_region_hex_height = stream_region_hex_size * sqrtf(3);
+		float scale = LITHOSPHERE_LEN / (float)wg->stream_size;
+		float zoom = wg->map_zoom * scale;
+		float tx = wg->map_tran_x * wg->stream_size;
+		float ty = wg->map_tran_y * wg->stream_size;
+		/* world coords */
+		float rl = window.mouse_x / zoom + tx - stream_region_hex_width / 2;
+		float rt = window.mouse_y / zoom + ty - stream_region_hex_height / 2;
+		float rr = rl + stream_region_hex_width;
+		float rb = rt + stream_region_hex_height;
+
+		/* window hexagon coords */
+		float wr_left   = (rl - tx) * zoom;
+		float wr_right  = (rr - tx) * zoom;
+		float wr_top    = (rt - ty) * zoom;
+		float wr_bottom = (rb - ty) * zoom;
+		float wr_left_corner  = (rl - tx + stream_region_hex_width / 4) * zoom;
+		float wr_right_corner = (rr - tx - stream_region_hex_width / 4) * zoom;
+		float wr_vertical_ctr   = (wr_top + wr_bottom) / 2;
+		float wr_horizontal_ctr = (wr_left + wr_right) / 2;
+		/* Label the hexagon half height */
+		char region_hex_hw_label[64];
+		snprintf(region_hex_hw_label, 64, "%ld", lroundf(REGION_UPSCALE * stream_region_hex_size));
 		gui_container_pop();
-		char region_size_label[64];
-		size_t region_size = REGION_UPSCALE *
-		                     STREAM_REGION_SIZE_MIN *
-		                     (1 << wg->selected_region_size_mag2);
-		snprintf(region_size_label, 64, "%zux%zu", region_size, region_size);
-		gui_text(region_size_label, (struct text_opts) {
+		gui_text(region_hex_hw_label, (struct text_opts) {
 			TEXT_OPTS_DEFAULTS,
-			.xoffset = wrl+1,
-			.yoffset = wrt+1,
+			.xoffset = wr_horizontal_ctr,
+			.yoffset = wr_top,
 			.zoffset = 1,
 			.size = 20
 		});
 		gui_container_push(&stack);
-		/* Highlight the region with a white box */
-		gui_line(wrl, wrt, 98, 1, 0xffffffff, wrl, wrb, 98, 1, 0xffffffff);
-		gui_line(wrr, wrt, 98, 1, 0xffffffff, wrr, wrb, 98, 1, 0xffffffff);
-		gui_line(wrl, wrt, 98, 1, 0xffffffff, wrr, wrt, 98, 1, 0xffffffff);
-		gui_line(wrl, wrb, 98, 1, 0xffffffff, wrr, wrb, 98, 1, 0xffffffff);
+		/*
+		 * Highlight the region with a white hexagon, from 9 o'clock
+		 * going clockwise.
+		 */
+		gui_line(wr_left, wr_vertical_ctr, 98, 1, 0xffffffff,
+		         wr_left_corner, wr_top, 98, 1, 0xffffffff);
+		gui_line(wr_left_corner, wr_top, 98, 1, 0xffffffff,
+		         wr_right_corner, wr_top, 98, 1, 0xffffffff);
+		gui_line(wr_right_corner, wr_top, 98, 1, 0xffffffff,
+		         wr_right, wr_vertical_ctr, 98, 1, 0xffffffff);
+		gui_line(wr_right, wr_vertical_ctr, 98, 1, 0xffffffff,
+		         wr_right_corner, wr_bottom, 98, 1, 0xffffffff);
+		gui_line(wr_right_corner, wr_bottom, 98, 1, 0xffffffff,
+		         wr_left_corner, wr_bottom, 98, 1, 0xffffffff);
+		gui_line(wr_left_corner, wr_bottom, 98, 1, 0xffffffff,
+		         wr_left, wr_vertical_ctr, 98, 1, 0xffffffff);
 		if (window.unhandled_mouse_press[MOUSEBL]) {
 			wg->selected_region_x = wrapidx(rl, wg->stream_size);
 			wg->selected_region_y = wrapidx(rt, wg->stream_size);

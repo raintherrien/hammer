@@ -12,15 +12,15 @@ struct stream_graph;
  * each axis.
  */
 #define REGION_UPSCALE 8
-#define REGION_HEIGHT_SCALE 5
+#define REGION_HEIGHT_SCALE 50
 
 /*
  * Impose some sane limitations on the stream region size, which will be
  * multiplied by REGION_UPSCALE to determine region size.
  */
 #define STREAM_REGION_SIZE_MIN 256
-#define STREAM_REGION_SIZE_MAX 1024
-#define STREAM_REGION_SIZE_MAX_MAG2 2 /* 256 * 2^2 = 1024 */
+#define STREAM_REGION_SIZE_MAX 2048
+#define STREAM_REGION_SIZE_MAX_MAG2 3 /* 256 * 2^3 = 2048 */
 
 /*
  * Number of hydraulic erosion steps during region generation.
@@ -28,6 +28,9 @@ struct stream_graph;
 #define REGION_GENERATIONS 1024
 
 /*
+ * TODO: Explain region is a flat-topped hexagon, the 90 degree translation of
+ * our smaller hexagons which are point-topped.
+ *
  * TODO: This method of SPH hydraulic erosion could, I think pretty easily,
  * be applied to not only a region but also its Moore neighborhood, and
  * interpolation between regions generated separately could allow us to grow
@@ -39,13 +42,16 @@ struct stream_graph;
 struct region {
         float *height;
         float *water;
-        size_t size;
+        size_t hex_size;
+        size_t rect_size;
+        float  hex_height;
+        float  hex_width;
         /*
          * Coordinates of the region within the stream graph (i.e. not taking
          * into account REGION_UPSCALE). Note that it's very likely the area
          * of our region will wrap around stream_graph->size.
          */
-        unsigned stream_region_size;
+        unsigned stream_region_hex_size;
         unsigned stream_coord_left;
         unsigned stream_coord_top;
 };
@@ -53,7 +59,7 @@ struct region {
 void region_create(struct region *,
                    unsigned stream_coord_left,
                    unsigned stream_coord_top,
-                   unsigned stream_region_size,
+                   unsigned stream_region_hex_size,
                    const struct stream_graph *);
 void region_destroy(struct region *);
 void region_erode(struct region *);

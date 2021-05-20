@@ -1,8 +1,11 @@
 #include "hammer/appstate/region_generation.h"
+#include "hammer/appstate/game.h"
+#include "hammer/appstate/world_config.h"
 #include "hammer/error.h"
 #include "hammer/glsl.h"
 #include "hammer/glthread.h"
 #include "hammer/gui.h"
+#include "hammer/hexagon.h"
 #include "hammer/math.h"
 #include "hammer/mem.h"
 #include "hammer/window.h"
@@ -23,6 +26,7 @@ struct region_renderer {
 		GLuint heightmap_sampler;
 		GLuint waterheight_sampler;
 		GLuint width;
+		GLuint scale;
 	} uniforms;
 	size_t render_size;
 	size_t render_verts;
@@ -42,6 +46,7 @@ struct region_generation_appstate {
 	unsigned                   stream_region_size;
 	unsigned                   generations;
 	int                        cancel_btn_state;
+	int                        continue_btn_state;
 	int                        mouse_captured;
 };
 
@@ -85,6 +90,7 @@ region_generation_entry(DL_TASK_ARGS)
 	DL_TASK_ENTRY(struct region_generation_appstate, rg, task);
 	rg->generations = 0;
 	rg->cancel_btn_state = 0;
+	rg->continue_btn_state = 0;
 	rg->mouse_captured = 0;
 	region_create(&rg->region,
 	              rg->stream_coord_left,
@@ -118,9 +124,17 @@ viz_region_loop(DL_TASK_ARGS)
 		return;
 	}
 
-	if (rg->generations >= REGION_GENERATIONS) {
-		/* TODO: Something */
-	} else {
+	if (rg->continue_btn_state == GUI_BTN_RELEASED) {
+		/* Kick off the game! */
+		dltask *next = game_appstate_alloc_detached();
+		dlcontinuation(&rg->task, region_generation_exit);
+		dlwait(&rg->task, 1);
+		dlnext(next, &rg->task);
+		dlasync(next);
+		return;
+	}
+
+	if (rg->generations < REGION_GENERATIONS) {
 		++ rg->generations;
 		region_erode(&rg->region);
 		glthread_execute(region_generation_gl_blit_heightmap, rg);
@@ -136,7 +150,6 @@ region_generation_gl_create(void *rg_)
 	struct region_renderer *renderer = &rg->renderer;
 
 	renderer->render_size = 512;
-	renderer->render_verts = renderer->render_size * renderer->render_size * 6;
 	renderer->shader = compile_shader_program(
 	                     "resources/shaders/region.vs",
 	                     "resources/shaders/region.gs",
@@ -149,12 +162,34 @@ region_generation_gl_create(void *rg_)
 	renderer->uniforms.heightmap_sampler = glGetUniformLocation(renderer->shader, "heightmap_sampler");
 	renderer->uniforms.waterheight_sampler = glGetUniformLocation(renderer->shader, "waterheight_sampler");
 	renderer->uniforms.width = glGetUniformLocation(renderer->shader, "width");
+	renderer->uniforms.scale = glGetUniformLocation(renderer->shader, "scale");
 
-	GLfloat *vertices = xcalloc(renderer->render_verts * 2, sizeof(*vertices));
+	size_t max_verts = (renderer->render_size+1) *
+	                   (renderer->render_size+1) * 6;
+	GLfloat *vertices = xcalloc(max_verts * 2, sizeof(*vertices));
 
-	for (size_t y = 0; y < renderer->render_size; ++ y)
-	for (size_t x = 0; x < renderer->render_size; ++ x) {
-		size_t i = y * renderer->render_size + x;
+	renderer->render_verts = 0;
+	for (float y = 0; y <= renderer->render_size; ++ y)
+	for (float x = 0; x <= renderer->render_size; ++ x) {
+		/* Crudely emulate the hexagonal region shape */
+		float approx_region_hex_size = renderer->render_size / 2.0f;
+		float approx_cell_hex_size = 0.577f; /* sqrtf(3) / 3 */
+		float q, r;
+		/*
+		 * XXX Add width lost to hexagon width/height ratio to keep
+		 * our region centered on whatever land features the user
+		 * selected.
+		 */
+		float xxxoffset = (renderer->render_size - approx_region_hex_size * sqrtf(3)) / 2;
+		hex_pixel_to_axial(approx_cell_hex_size * sqrtf(3),
+		                   approx_cell_hex_size,
+		                   x - renderer->render_size / 2.0f,
+		                   y - renderer->render_size / 2.0f + xxxoffset,
+		                   &q, &r);
+		float d = MAX(MAX(fabsf(q), fabsf(r)), fabsf(-q-r));
+		if (d > approx_region_hex_size)
+			continue;
+
 		GLfloat tris[6][2] = {
 			{ x+0, y+0 },
 			{ x+0, y+1 },
@@ -164,7 +199,8 @@ region_generation_gl_create(void *rg_)
 			{ x+1, y+0 },
 			{ x+0, y+0 }
 		};
-		memcpy(vertices + i * 2 * 6, tris, 2 * 6 * sizeof(*vertices));
+		memcpy(vertices + renderer->render_verts * 2, tris, 2 * 6 * sizeof(*vertices));
+		renderer->render_verts += 6;
 	}
 
 	glGenVertexArrays(1, &renderer->vao);
@@ -184,7 +220,7 @@ region_generation_gl_create(void *rg_)
 	glBindTexture(GL_TEXTURE_2D, renderer->heightmap_img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_R32F,
-	                            rg->region.size, rg->region.size,
+	                            rg->region.rect_size, rg->region.rect_size,
 	                            0, /* border */
 	                            GL_RED,
 	                            GL_FLOAT,
@@ -200,7 +236,7 @@ region_generation_gl_create(void *rg_)
 	glBindTexture(GL_TEXTURE_2D, renderer->waterheight_img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_R32F,
-	                            rg->region.size, rg->region.size,
+	                            rg->region.rect_size, rg->region.rect_size,
 	                            0, /* border */
 	                            GL_RED,
 	                            GL_FLOAT,
@@ -214,6 +250,7 @@ region_generation_gl_create(void *rg_)
 
 	/* Constant uniform values */
 	glUniform1f(renderer->uniforms.width, renderer->render_size);
+	glUniform1f(renderer->uniforms.scale, renderer->render_size / (float)rg->region.rect_size);
 	glUniform1i(renderer->uniforms.heightmap_sampler, 0);
 	glUniform1i(renderer->uniforms.waterheight_sampler, 1);
 	glActiveTexture(GL_TEXTURE0);
@@ -267,23 +304,11 @@ region_generation_gl_frame(void *rg_)
 		.size = font_size
 	};
 
-	const struct text_opts small_text_opts = {
-		TEXT_OPTS_DEFAULTS,
-		.size = 20
-	};
-
 	struct btn_opts btn_opts = {
 		BTN_OPTS_DEFAULTS,
 		.width = font_size * 8,
 		.height = font_size + 16,
 		.size = font_size
-	};
-
-	struct check_opts check_opts = {
-		BTN_OPTS_DEFAULTS,
-		.size = font_size,
-		.width = font_size,
-		.height = font_size,
 	};
 
 	gui_container stack;
@@ -296,11 +321,24 @@ region_generation_gl_frame(void *rg_)
 	});
 	gui_container_push(&stack);
 
-	gui_text("Bork", bold_text_opts);
+	gui_text("Region view", bold_text_opts);
+	gui_stack_break(&stack);
+	char region_label[128];
+	snprintf(region_label, 128, "Seed: %llu, %zu @ (%u,%u)",
+	         rg->world_opts->seed,
+	         rg->region.hex_size,
+	         rg->region.stream_coord_left,
+	         rg->region.stream_coord_top);
+	gui_text(region_label, normal_text_opts);
 	gui_stack_break(&stack);
 
 	rg->cancel_btn_state = gui_btn(rg->cancel_btn_state, "Cancel", btn_opts);
 	gui_stack_break(&stack);
+
+	if (rg->generations >= REGION_GENERATIONS) {
+		rg->continue_btn_state = gui_btn(rg->continue_btn_state, "Continue", btn_opts);
+		gui_stack_break(&stack);
+	}
 
 	/* Handle after UI has a chance to steal mouse event */
 	if (window.unhandled_mouse_press[MOUSEBM]) {
@@ -343,14 +381,14 @@ region_generation_gl_blit_heightmap(void *rg_)
 	glTextureSubImage2D(rg->renderer.heightmap_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
-	                    rg->region.size, rg->region.size, /* w,h */
+	                    rg->region.rect_size, rg->region.rect_size, /* w,h */
 	                    GL_RED, GL_FLOAT,
 	                    rg->region.height);
 
 	glTextureSubImage2D(rg->renderer.waterheight_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
-	                    rg->region.size, rg->region.size, /* w,h */
+	                    rg->region.rect_size, rg->region.rect_size, /* w,h */
 	                    GL_RED, GL_FLOAT,
 	                    rg->region.water);
 

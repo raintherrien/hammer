@@ -21,6 +21,14 @@ This is a cobbled together, late-night hack that definitely needs improvement. I
 
 I freaking love this paper. Go read it. Go read every HAL terrain generation paper because they are all expertly composed and explained. This is the least cobbled-together mess, and that's entirely due to the quality of this paper. My implementation differs very little from the described implementation.
 
+#### Hexagon nonsense
+I'm still digesting the full implications of choosing a hexagonal coordinate space, but everything so far (code, musings) comes from Amit Patel's excellent article on the subject.
+> Hexagonal Grids from Red Blob Games
+> https://www.redblobgames.com/grids/hexagons/
+> Copyright (c) 2021 Amit Patel
+> Distributed under the MIT license:
+> https://opensource.org/licenses/mit-license.php
+
 ## Build
 
 #### GitHub Dependencies
