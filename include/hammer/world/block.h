@@ -1,7 +1,7 @@
 #ifndef HAMMER_WORLD_BLOCK_H_
 #define HAMMER_WORLD_BLOCK_H_
 
-typedef enum {
+enum block {
 	BLOCK_UNKNOWN = 0,
 	BLOCK_AIR = 1,
 	BLOCK_STONE = 2,
@@ -12,10 +12,10 @@ typedef enum {
 	BLOCK_LOG1 = 7,
 	BLOCK_LEAVES1 = 8,
 	BLOCK_COUNT
-} block;
+};
 
 static inline int
-is_block_opaque(block b)
+is_block_opaque(enum block b)
 {
 	return b != BLOCK_AIR;
 }
