@@ -60,6 +60,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/game.c
                    ${PROJECT_SOURCE_DIR}/src/poisson.c
                    ${PROJECT_SOURCE_DIR}/src/pool.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
+                   ${PROJECT_SOURCE_DIR}/src/time.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
@@ -99,6 +100,10 @@ endif()
 if(WIN32)
 	# Disable warnings about fopen in VS2019
 	target_compile_definitions(hammer PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+if(NOT WIN32 OR MINGW)
+	target_compile_definitions(hammer PRIVATE _POSIX_C_SOURCE=200112L)
 endif()
 
 add_custom_target(hammer_copy_resources

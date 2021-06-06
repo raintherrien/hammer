@@ -1,7 +1,7 @@
 #include "hammer/pool.h"
 #include "hammer/mem.h"
 
-static int
+static void
 pool_grow(struct pool *p)
 {
 	size_t np = p->pages_count ++;

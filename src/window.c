@@ -1,5 +1,6 @@
 #include "hammer/window.h"
 #include "hammer/error.h"
+#include "hammer/time.h"
 #include "hammer/vector.h"
 #include <errno.h>
 #include <cglm/cam.h>
@@ -260,9 +261,9 @@ window_acquire_next_frame(void)
 	}
 	glDeleteSync(recycling_fence);
 	window.current_frame->fence = 0;
-	window.timing[timing_id].cpu_ns = (window.current_frame->frame_end.tv_sec - window.current_frame->frame_begin.tv_sec) * 1000000000 +
-	                                  (window.current_frame->frame_end.tv_nsec - window.current_frame->frame_begin.tv_nsec);
-	timespec_get(&window.current_frame->frame_begin, TIME_UTC);
+	window.timing[timing_id].cpu_ns = window.current_frame->frame_end_ns -
+	                                  window.current_frame->frame_begin_ns;
+	window.current_frame->frame_begin_ns = now_ns();
 
 	/* Begin this frame */
 	window.current_frame->id = new_frame;
@@ -379,7 +380,7 @@ window_submitframe(void)
 	SDL_GL_SwapWindow(window.handle);
 	window.current_frame->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 	/* Conclude timing this frame */
-	timespec_get(&window.current_frame->frame_end, TIME_UTC);
+	window.current_frame->frame_end_ns = now_ns();
 
 	window_acquire_next_frame();
 }

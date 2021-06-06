@@ -8,7 +8,6 @@
 #include <cglm/mat4.h>
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
-#include <time.h>
 
 #define FRAMES_IN_FLIGHT 1
 #define FRAME_TIMING_LEN 800
@@ -17,8 +16,8 @@ struct frame {
 	struct gui_text_frame gui_text_frame;
 	struct gui_rect_frame gui_rect_frame;
 	struct gui_line_frame gui_line_frame;
-	struct timespec frame_begin;
-	struct timespec frame_end;
+	unsigned long long frame_begin_ns;
+	unsigned long long frame_end_ns;
 	GLsync fence;
 	size_t id;
 };
