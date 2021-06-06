@@ -429,7 +429,7 @@ overworld_generation_gl_frame(void *wg_)
 
 	const struct map_opts map_opts = {
 		MAP_OPTS_DEFAULTS,
-		.zoffset = 99, /* background */
+		.zoffset = 90, /* background */
 		.width  = window.width,
 		.height = window.height,
 		.scale_x = wg->map_zoom * (LITHOSPHERE_LEN / (float)window.width),
@@ -656,18 +656,18 @@ overworld_generation_gl_frame(void *wg_)
 		 * Highlight the region with a white hexagon, from 9 o'clock
 		 * going clockwise.
 		 */
-		gui_line(wr_left, wr_vertical_ctr, 98, 1, 0xffffffff,
-		         wr_left_corner, wr_top, 98, 1, 0xffffffff);
-		gui_line(wr_left_corner, wr_top, 98, 1, 0xffffffff,
-		         wr_right_corner, wr_top, 98, 1, 0xffffffff);
-		gui_line(wr_right_corner, wr_top, 98, 1, 0xffffffff,
-		         wr_right, wr_vertical_ctr, 98, 1, 0xffffffff);
-		gui_line(wr_right, wr_vertical_ctr, 98, 1, 0xffffffff,
-		         wr_right_corner, wr_bottom, 98, 1, 0xffffffff);
-		gui_line(wr_right_corner, wr_bottom, 98, 1, 0xffffffff,
-		         wr_left_corner, wr_bottom, 98, 1, 0xffffffff);
-		gui_line(wr_left_corner, wr_bottom, 98, 1, 0xffffffff,
-		         wr_left, wr_vertical_ctr, 98, 1, 0xffffffff);
+		gui_line(wr_left, wr_vertical_ctr, 89, 1, 0xffffffff,
+		         wr_left_corner, wr_top, 89, 1, 0xffffffff);
+		gui_line(wr_left_corner, wr_top, 89, 1, 0xffffffff,
+		         wr_right_corner, wr_top, 89, 1, 0xffffffff);
+		gui_line(wr_right_corner, wr_top, 89, 1, 0xffffffff,
+		         wr_right, wr_vertical_ctr, 89, 1, 0xffffffff);
+		gui_line(wr_right, wr_vertical_ctr, 89, 1, 0xffffffff,
+		         wr_right_corner, wr_bottom, 89, 1, 0xffffffff);
+		gui_line(wr_right_corner, wr_bottom, 89, 1, 0xffffffff,
+		         wr_left_corner, wr_bottom, 89, 1, 0xffffffff);
+		gui_line(wr_left_corner, wr_bottom, 89, 1, 0xffffffff,
+		         wr_left, wr_vertical_ctr, 89, 1, 0xffffffff);
 		if (window.unhandled_mouse_press[MOUSEBL]) {
 			wg->selected_region_x = wrapidx(rl, wg->stream_size);
 			wg->selected_region_y = wrapidx(rt, wg->stream_size);
