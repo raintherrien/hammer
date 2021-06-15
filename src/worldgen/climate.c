@@ -8,7 +8,8 @@
 #include <string.h>
 
 /*
- * TODO: Document
+ * TODO: Document; I'm unhappy with this climate model so I won't bother doing
+ * much with it until I fix it.
  * Pressure fluid model derived from shallow-water model of:
  *   Balázs Jákó and Balázs Tóth, Fast Hydraulic and Thermal Erosion on the
  *   GPU, 2011.

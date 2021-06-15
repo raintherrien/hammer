@@ -13,6 +13,12 @@
 #include <float.h>
 #include <string.h>
 
+/*
+ * TODO: All of these updates steps should happen asynchronously. This
+ * wouldn't be hard with an atomic GLchar[] or two that the render thread
+ * checks and swaps out when the update thread has something to display.
+ */
+
 #define PROGRESS_STR_MAX_LEN 64
 #define BIOME_TOOLTIP_STR_MAX_LEN 64
 

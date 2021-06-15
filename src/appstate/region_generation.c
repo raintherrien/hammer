@@ -12,16 +12,23 @@
 
 dltask appstate_region_generation_frame;
 
+enum {
+	HEIGHTMAP_IMG_SEDIMENT,
+	HEIGHTMAP_IMG_STONE,
+	HEIGHTMAP_IMG_WATER,
+	HEIGHTMAP_IMG_COUNT
+};
+
 struct region_renderer {
 	GLuint shader;
 	GLuint vao;
 	GLuint vbo;
-	GLuint heightmap_img;
-	GLuint waterheight_img;
+	GLuint heightmap_imgs[HEIGHTMAP_IMG_COUNT];
 	struct {
 		GLuint mvp;
-		GLuint heightmap_sampler;
-		GLuint waterheight_sampler;
+		GLuint sediment_sampler;
+		GLuint stone_sampler;
+		GLuint water_sampler;
 		GLuint width;
 		GLuint scale;
 	} uniforms;
@@ -32,7 +39,9 @@ struct region_renderer {
 static struct {
 	struct region_renderer renderer;
 	unsigned generations;
-	float    yaw, pitch;
+	float    yaw;
+	float    pitch;
+	float    zoom;
 	int      cancel_btn_state;
 	int      continue_btn_state;
 	int      mouse_captured;
@@ -58,6 +67,7 @@ appstate_region_generation_setup(void)
 	region_generation.generations = 0;
 	region_generation.yaw = -M_PI / 2;
 	region_generation.pitch = -FLT_EPSILON;
+	region_generation.zoom = 1;
 	region_generation.cancel_btn_state = 0;
 	region_generation.continue_btn_state = 0;
 	region_generation.mouse_captured = 0;
@@ -122,8 +132,9 @@ region_generation_gl_create(void *_)
 	glUseProgram(renderer->shader);
 
 	renderer->uniforms.mvp = glGetUniformLocation(renderer->shader, "mvp");
-	renderer->uniforms.heightmap_sampler = glGetUniformLocation(renderer->shader, "heightmap_sampler");
-	renderer->uniforms.waterheight_sampler = glGetUniformLocation(renderer->shader, "waterheight_sampler");
+	renderer->uniforms.sediment_sampler = glGetUniformLocation(renderer->shader, "sediment_sampler");
+	renderer->uniforms.stone_sampler = glGetUniformLocation(renderer->shader, "stone_sampler");
+	renderer->uniforms.water_sampler = glGetUniformLocation(renderer->shader, "water_sampler");
 	renderer->uniforms.width = glGetUniformLocation(renderer->shader, "width");
 	renderer->uniforms.scale = glGetUniformLocation(renderer->shader, "scale");
 
@@ -179,47 +190,36 @@ region_generation_gl_create(void *_)
 
 	free(vertices);
 
-	glGenTextures(1, &renderer->heightmap_img);
-	glBindTexture(GL_TEXTURE_2D, renderer->heightmap_img);
-	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
-	                            GL_R32F,
-	                            world.region.rect_size, world.region.rect_size,
-	                            0, /* border */
-	                            GL_RED,
-	                            GL_FLOAT,
-	                            NULL);
-	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_WRAP_S, GL_CLAMP);
-	glTextureParameteri(renderer->heightmap_img, GL_TEXTURE_WRAP_T, GL_CLAMP);
-	glGenerateTextureMipmap(renderer->heightmap_img);
-
-	glGenTextures(1, &renderer->waterheight_img);
-	glBindTexture(GL_TEXTURE_2D, renderer->waterheight_img);
-	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
-	                            GL_R32F,
-	                            world.region.rect_size, world.region.rect_size,
-	                            0, /* border */
-	                            GL_RED,
-	                            GL_FLOAT,
-	                            NULL);
-	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_WRAP_S, GL_CLAMP);
-	glTextureParameteri(renderer->waterheight_img, GL_TEXTURE_WRAP_T, GL_CLAMP);
-	glGenerateTextureMipmap(renderer->waterheight_img);
+	glGenTextures(3, renderer->heightmap_imgs);
+	for (size_t i = 0; i < 3; ++ i) {
+		GLuint img = renderer->heightmap_imgs[i];
+		glBindTexture(GL_TEXTURE_2D, img);
+		glTexImage2D(GL_TEXTURE_2D,
+		             0, /* level */
+		             GL_R32F,
+		             world.region.rect_size, world.region.rect_size,
+		             0, /* border */
+		             GL_RED,
+		             GL_FLOAT,
+		             NULL);
+		glTextureParameteri(img, GL_TEXTURE_MAX_LEVEL, 0);
+		glTextureParameteri(img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTextureParameteri(img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTextureParameteri(img, GL_TEXTURE_WRAP_S, GL_CLAMP);
+		glTextureParameteri(img, GL_TEXTURE_WRAP_T, GL_CLAMP);
+		glGenerateTextureMipmap(img);
+	}
 
 	/* Constant uniform values */
 	glUniform1f(renderer->uniforms.width, renderer->render_size);
 	glUniform1f(renderer->uniforms.scale, renderer->render_size / (float)world.region.rect_size);
-	glUniform1i(renderer->uniforms.heightmap_sampler, 0);
-	glUniform1i(renderer->uniforms.waterheight_sampler, 1);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, renderer->heightmap_img);
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, renderer->waterheight_img);
+	glUniform1i(renderer->uniforms.sediment_sampler, 0);
+	glUniform1i(renderer->uniforms.stone_sampler, 1);
+	glUniform1i(renderer->uniforms.water_sampler, 2);
+	for (size_t i = 0; i < 3; ++ i) {
+		glActiveTexture(GL_TEXTURE0 + i);
+		glBindTexture(GL_TEXTURE_2D, renderer->heightmap_imgs[i]);
+	}
 
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
@@ -238,6 +238,12 @@ region_generation_gl_destroy(void *_)
 static int
 region_generation_gl_frame(void *_)
 {
+	if (window.scroll)
+	{
+		region_generation.zoom += window.scroll / 40.0f;
+		region_generation.zoom = CLAMP(region_generation.zoom, 1, 3);
+	}
+
 	if (region_generation.mouse_captured) {
 		if (!window.mouse_held[MOUSEBM]) {
 			region_generation.mouse_captured = 0;
@@ -306,11 +312,13 @@ region_generation_gl_frame(void *_)
 		window_lock_mouse();
 	}
 
+	/* Arcball camera rotates around region */
 	const float r = region_generation.renderer.render_size;
+	const float fov = glm_rad(60) / region_generation.zoom;
 	mat4 model, view, proj, mvp;
 	glm_translate_make(model, (vec3) { -r / 2.0f, 0, -r / 2.0f });
 	float aspect = window.width / (float)window.height;
-	glm_perspective(glm_rad(60), aspect, 1, 1000, proj);
+	glm_perspective(fov, aspect, 1, 1000, proj);
 	glm_lookat((vec3){r * sinf(region_generation.pitch) * cosf(region_generation.yaw),
 	                  r * cosf(region_generation.pitch),
 	                  r * sinf(region_generation.pitch) * sinf(region_generation.yaw)},
@@ -321,8 +329,6 @@ region_generation_gl_frame(void *_)
 
 	glUseProgram(region_generation.renderer.shader);
 	glBindVertexArray(region_generation.renderer.vao);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, region_generation.renderer.heightmap_img);
 	glUniformMatrix4fv(region_generation.renderer.uniforms.mvp, 1, GL_FALSE, (float *)mvp);
 	glBindBuffer(GL_ARRAY_BUFFER, region_generation.renderer.vbo);
 	glDrawArrays(GL_TRIANGLES, 0, region_generation.renderer.render_verts);
@@ -335,14 +341,21 @@ region_generation_gl_frame(void *_)
 static int
 region_generation_gl_blit_heightmap(void *_)
 {
-	glTextureSubImage2D(region_generation.renderer.heightmap_img,
+	glTextureSubImage2D(region_generation.renderer.heightmap_imgs[HEIGHTMAP_IMG_SEDIMENT],
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
 	                    world.region.rect_size, world.region.rect_size, /* w,h */
 	                    GL_RED, GL_FLOAT,
-	                    world.region.height);
+	                    world.region.sediment);
 
-	glTextureSubImage2D(region_generation.renderer.waterheight_img,
+	glTextureSubImage2D(region_generation.renderer.heightmap_imgs[HEIGHTMAP_IMG_STONE],
+	                    0, /* level */
+	                    0, 0, /* x,y offset */
+	                    world.region.rect_size, world.region.rect_size, /* w,h */
+	                    GL_RED, GL_FLOAT,
+	                    world.region.stone);
+
+	glTextureSubImage2D(region_generation.renderer.heightmap_imgs[HEIGHTMAP_IMG_WATER],
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
 	                    world.region.rect_size, world.region.rect_size, /* w,h */

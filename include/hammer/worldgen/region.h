@@ -41,7 +41,8 @@ struct stream_graph;
  * sequential regions upon a 2D lattice but that makes sense for this game.
  */
 struct region {
-        float *height;
+        float *sediment;
+        float *stone;
         float *water;
         size_t hex_size;
         size_t rect_size;

@@ -20,8 +20,9 @@ region_create(struct region *r,
 	r->hex_width = r->hex_size * 2;
 	r->hex_height = r->hex_size * sqrtf(3);
 	r->rect_size = MAX(ceilf(r->hex_width), ceilf(r->hex_height));
-	r->height = xcalloc(r->rect_size * r->rect_size, sizeof(*r->height));
-	r->water  = xcalloc(r->rect_size * r->rect_size, sizeof(*r->water));
+	r->sediment = xcalloc(r->rect_size * r->rect_size, sizeof(*r->sediment));
+	r->stone = xcalloc(r->rect_size * r->rect_size, sizeof(*r->stone));
+	r->water = xcalloc(r->rect_size * r->rect_size, sizeof(*r->water));
 	r->stream_region_hex_size = stream_region_hex_size;
 	r->stream_coord_left = stream_coord_left;
 	r->stream_coord_top = stream_coord_top;
@@ -32,7 +33,8 @@ void
 region_destroy(struct region *r)
 {
 	free(r->water);
-	free(r->height);
+	free(r->stone);
+	free(r->sediment);
 }
 
 void
@@ -152,12 +154,13 @@ region_blit(struct region *r,
 				water = TECTONIC_CONTINENT_MASS - elev;
 
 			size_t i = wy * r->hex_width + wx;
-			r->height[i] = REGION_HEIGHT_SCALE * elev;
+			r->sediment[i] = 3;
+			r->stone[i] = REGION_HEIGHT_SCALE * elev;
 			r->water[i] = REGION_HEIGHT_SCALE * water;
 		}
 	}
 
-	float *blurring[2] = { r->height, r->water };
+	float *blurring[2] = { r->stone, r->water };
 
 	/* Gaussian blur */
 	const long long gkl = REGION_UPSCALE * 2;
