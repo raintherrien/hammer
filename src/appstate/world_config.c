@@ -3,11 +3,13 @@
 #include "hammer/error.h"
 #include "hammer/glthread.h"
 #include "hammer/gui.h"
+#include "hammer/server.h"
 #include "hammer/window.h"
-#include "hammer/world.h"
 #include <limits.h>
 #include <stdio.h>
 #include <time.h>
+
+/* xxx rename server config */
 
 #define NUM_EDIT_BUFFER_LEN 32
 

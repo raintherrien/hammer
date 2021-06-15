@@ -1,4 +1,5 @@
 #include "hammer/appstate.h"
+#include "hammer/appstate/game.h"
 #include "hammer/appstate/main_menu.h"
 #include "hammer/appstate/planet_generation.h"
 #include "hammer/appstate/region_generation.h"
@@ -64,8 +65,18 @@ appstate_transition(int transition)
 		appstate_region_generation_teardown_discard_region();
 		appstate_manager.appstate_task = &appstate_planet_generation_frame;
 		break;
-	case APPSTATE_TRANSITION_CONFIRM_REGION_AND_ENTER_WORLD:
-	case APPSTATE_TRANSITION_EXIT_WORLD:
+	case APPSTATE_TRANSITION_CONFIRM_REGION_AND_ENTER_GAME:
+		/* Planet still constructed */
+		appstate_region_generation_teardown_confirm_region();
+		appstate_planet_generation_teardown();
+		appstate_game_setup();
+		appstate_manager.appstate_task = &appstate_game_frame;
+		break;
+	case APPSTATE_TRANSITION_EXIT_GAME:
+		appstate_game_teardown();
+		appstate_main_menu_setup();
+		appstate_manager.appstate_task = &appstate_main_menu_frame;
+		break;
 	case APPSTATE_TRANSITION_OPEN_IN_GAME_OPTIONS:
 	case APPSTATE_TRANSITION_CLOSE_IN_GAME_OPTIONS:
 	default:

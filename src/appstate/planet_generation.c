@@ -2,9 +2,9 @@
 #include "hammer/glthread.h"
 #include "hammer/gui.h"
 #include "hammer/mem.h"
+#include "hammer/server.h"
 #include "hammer/vector.h"
 #include "hammer/window.h"
-#include "hammer/world.h"
 #include "hammer/worldgen/biome.h"
 #include "hammer/worldgen/climate.h"
 #include "hammer/worldgen/region.h"
@@ -86,10 +86,10 @@ appstate_planet_generation_setup(void)
 {
 	appstate_planet_generation_frame = DL_TASK_INIT(planet_generation_frame_async);
 
-	world.lithosphere = xmalloc(sizeof(*world.lithosphere));
-	world.climate = xmalloc(sizeof(*world.climate));
-	world.stream = xmalloc(sizeof(*world.stream));
-	lithosphere_create(world.lithosphere, &world.opts);
+	planet.lithosphere = xmalloc(sizeof(*planet.lithosphere));
+	planet.climate = xmalloc(sizeof(*planet.climate));
+	planet.stream = xmalloc(sizeof(*planet.stream));
+	lithosphere_create(planet.lithosphere, &world.opts);
 
 	planet_generation.current_stage = PLANET_STAGE_LITHOSPHERE;
 	planet_generation.focussed_stage = PLANET_STAGE_LITHOSPHERE;
@@ -122,22 +122,22 @@ appstate_planet_generation_teardown(void)
 {
 	/* TODO: Images never freed, mouse never potentially released */
 
-	if (world.stream) {
+	if (planet.stream) {
 		if (planet_generation.current_stage >= PLANET_STAGE_STREAM)
-			stream_graph_destroy(world.stream);
-		free(world.stream);
-		world.stream = NULL;
+			stream_graph_destroy(planet.stream);
+		free(planet.stream);
+		planet.stream = NULL;
 	}
-	if (world.climate) {
+	if (planet.climate) {
 		if (planet_generation.current_stage >= PLANET_STAGE_CLIMATE)
-			climate_destroy(world.climate);
-		free(world.climate);
-		world.climate = NULL;
+			climate_destroy(planet.climate);
+		free(planet.climate);
+		planet.climate = NULL;
 	}
-	if (world.lithosphere) {
-		lithosphere_destroy(world.lithosphere);
-		free(world.lithosphere);
-		world.lithosphere = NULL;
+	if (planet.lithosphere) {
+		lithosphere_destroy(planet.lithosphere);
+		free(planet.lithosphere);
+		planet.lithosphere = NULL;
 	}
 }
 
@@ -181,16 +181,16 @@ planet_generation_lithosphere_frame(void)
 {
 	size_t steps = world.opts.tectonic.generations *
 	                 world.opts.tectonic.generation_steps;
-	if (world.lithosphere->generation >= steps) {
+	if (planet.lithosphere->generation >= steps) {
 		/* Kick off climate loop */
-		climate_create(world.climate, world.lithosphere);
+		climate_create(planet.climate, planet.lithosphere);
 		planet_generation.current_stage = PLANET_STAGE_CLIMATE;
 		planet_generation.focussed_stage = PLANET_STAGE_CLIMATE;
 		return;
 	}
 
 	if (!planet_generation.paused) {
-		lithosphere_update(world.lithosphere, &world.opts);
+		lithosphere_update(planet.lithosphere, &world.opts);
 		glthread_execute(planet_generation_gl_blit_lithosphere_image, NULL);
 	}
 }
@@ -198,10 +198,10 @@ planet_generation_lithosphere_frame(void)
 static void
 planet_generation_climate_frame(void)
 {
-	if (world.climate->generation >= CLIMATE_GENERATIONS) {
+	if (planet.climate->generation >= CLIMATE_GENERATIONS) {
 		/* Kick off stream loop */
-		stream_graph_create(world.stream,
-		                    world.climate,
+		stream_graph_create(planet.stream,
+		                    planet.climate,
 		                    world.opts.seed,
 		                    planet_generation.composite_size);
 		planet_generation.current_stage = PLANET_STAGE_STREAM;
@@ -210,7 +210,7 @@ planet_generation_climate_frame(void)
 	}
 
 	if (!planet_generation.paused) {
-		climate_update(world.climate);
+		climate_update(planet.climate);
 		glthread_execute(planet_generation_gl_blit_climate_image, NULL);
 	}
 }
@@ -218,7 +218,7 @@ planet_generation_climate_frame(void)
 static void
 planet_generation_stream_frame(void)
 {
-	if (world.stream->generation >= STREAM_GRAPH_GENERATIONS) {
+	if (planet.stream->generation >= STREAM_GRAPH_GENERATIONS) {
 		/* Kick off composite loop */
 		glthread_execute(planet_generation_gl_blit_composite_image, NULL);
 		planet_generation.current_stage = PLANET_STAGE_COMPOSITE;
@@ -227,7 +227,7 @@ planet_generation_stream_frame(void)
 	}
 
 	if (!planet_generation.paused) {
-		stream_graph_update(world.stream);
+		stream_graph_update(planet.stream);
 		glthread_execute(planet_generation_gl_blit_stream_image, NULL);
 	}
 }
@@ -415,20 +415,20 @@ planet_generation_gl_frame(void *_)
 	snprintf(planet_generation.lithosphere_progress_str,
 	         PROGRESS_STR_MAX_LEN,
 	         "Lithosphere Generation: %ld/%ld",
-	         (long)world.lithosphere->generation,
+	         (long)planet.lithosphere->generation,
 	         (long)world.opts.tectonic.generations *
 	               world.opts.tectonic.generation_steps);
 
 	snprintf(planet_generation.climate_progress_str,
 	         PROGRESS_STR_MAX_LEN,
 	         "Climate Model Generation: %ld/%ld",
-	         (long)(world.climate ? world.climate->generation : 0),
+	         (long)(planet.climate ? planet.climate->generation : 0),
 	         (long)CLIMATE_GENERATIONS);
 
 	snprintf(planet_generation.stream_progress_str,
 	         PROGRESS_STR_MAX_LEN,
 	         "Stream Graph Generation: %ld/%ld",
-	         (long)(world.stream ? world.stream->generation : 0),
+	         (long)(planet.stream ? planet.stream->generation : 0),
 	         (long)STREAM_GRAPH_GENERATIONS);
 
 	gui_container stack;
@@ -471,9 +471,9 @@ planet_generation_gl_frame(void *_)
 		size_t imgx = window.mouse_x / planet_generation.map_zoom + planet_generation.map_tran_x * CLIMATE_LEN;
 		size_t imgy = window.mouse_y / planet_generation.map_zoom + planet_generation.map_tran_y * CLIMATE_LEN;
 		size_t i = wrapidx(imgy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(imgx, CLIMATE_LEN);
-		float temp = 1 - world.climate->inv_temp[i];
-		float precip = world.climate->precipitation[i];
-		float elev = world.climate->uplift[i];
+		float temp = 1 - planet.climate->inv_temp[i];
+		float precip = planet.climate->precipitation[i];
+		float elev = planet.climate->uplift[i];
 		enum biome b = biome_class(elev, temp, precip);
 		snprintf(planet_generation.biome_tooltip_str,
 		         BIOME_TOOLTIP_STR_MAX_LEN,
@@ -664,7 +664,7 @@ planet_generation_gl_frame(void *_)
 static int
 planet_generation_gl_blit_lithosphere_image(void *_)
 {
-	struct lithosphere *l = world.lithosphere;
+	struct lithosphere *l = planet.lithosphere;
 	GLubyte *img = xmalloc(LITHOSPHERE_AREA * sizeof(*img) * 3);
 	/* Blue below sealevel, green to red continent altitude */
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
@@ -696,7 +696,7 @@ planet_generation_gl_blit_lithosphere_image(void *_)
 static int
 planet_generation_gl_blit_climate_image(void *_)
 {
-	struct climate *c = world.climate;
+	struct climate *c = planet.climate;
 	GLubyte *img = xmalloc(CLIMATE_AREA * sizeof(*img) * 3);
 	for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
 		float temp = 1 - c->inv_temp[i];
@@ -774,7 +774,7 @@ swizzle(uint32_t i, GLubyte *rgb)
 static int
 planet_generation_gl_blit_stream_image(void *_)
 {
-	struct stream_graph *s = world.stream;
+	struct stream_graph *s = planet.stream;
 	size_t area = s->size * s->size;
 	GLubyte *img = xcalloc(area * 3, sizeof(*img));
 
@@ -823,7 +823,7 @@ planet_generation_gl_blit_stream_image(void *_)
 static int
 planet_generation_gl_blit_composite_image(void *_)
 {
-	struct stream_graph *s = world.stream;
+	struct stream_graph *s = planet.stream;
 	GLubyte *img = xcalloc(s->size * s->size * 3, sizeof(*img));
 
 	/*
@@ -881,8 +881,8 @@ planet_generation_gl_blit_composite_image(void *_)
 			if (w[0] < 0 || w[1] < 0 || w[2] < 0)
 				continue;
 			size_t i = wy * s->size + wx;
-			float temp = 1 - lerp_climate_layer(world.climate->inv_temp, wx, wy, cs);
-			float precip = lerp_climate_layer(world.climate->precipitation, wx, wy, cs);
+			float temp = 1 - lerp_climate_layer(planet.climate->inv_temp, wx, wy, cs);
+			float precip = lerp_climate_layer(planet.climate->precipitation, wx, wy, cs);
 			float elev = n[0].height * w[0] + n[1].height * w[1] + n[2].height * w[2];
 			enum biome b = biome_class(elev, temp, precip);
 			if (elev < max_lake)

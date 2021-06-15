@@ -56,17 +56,18 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/game.c
                    ${PROJECT_SOURCE_DIR}/src/glsl.c
                    ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/salloc.c
+                   ${PROJECT_SOURCE_DIR}/src/server.c
                    ${PROJECT_SOURCE_DIR}/src/main.c
                    ${PROJECT_SOURCE_DIR}/src/map3.c
                    ${PROJECT_SOURCE_DIR}/src/poisson.c
                    ${PROJECT_SOURCE_DIR}/src/pool.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
+                   ${PROJECT_SOURCE_DIR}/src/server.c
                    ${PROJECT_SOURCE_DIR}/src/time.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
-                   ${PROJECT_SOURCE_DIR}/src/window.c
-                   ${PROJECT_SOURCE_DIR}/src/world.c)
+                   ${PROJECT_SOURCE_DIR}/src/window.c)
 if(PNG_FOUND)
 	list(APPEND HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/image.c)
 endif()

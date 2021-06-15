@@ -5,8 +5,8 @@
 #include "hammer/hexagon.h"
 #include "hammer/math.h"
 #include "hammer/mem.h"
+#include "hammer/server.h"
 #include "hammer/window.h"
-#include "hammer/world.h"
 #include <cglm/affine.h>
 #include <cglm/cam.h>
 
@@ -62,7 +62,7 @@ appstate_region_generation_setup(void)
 	              world.region_stream_coord_left,
 	              world.region_stream_coord_top,
 	              STREAM_REGION_SIZE_MIN * (1 << world.region_size_mag2),
-	              world.stream);
+	              planet.stream);
 
 	region_generation.generations = 0;
 	region_generation.yaw = -M_PI / 2;
@@ -106,7 +106,7 @@ region_generation_frame_async(DL_TASK_ARGS)
 
 	if (region_generation.continue_btn_state == GUI_BTN_RELEASED) {
 		/* Kick off the game! */
-                appstate_transition(APPSTATE_TRANSITION_CONFIRM_REGION_AND_ENTER_WORLD);
+                appstate_transition(APPSTATE_TRANSITION_CONFIRM_REGION_AND_ENTER_GAME);
 		return;
 	}
 

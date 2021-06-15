@@ -3,8 +3,9 @@
 
 #include <deadlock/dl.h>
 
-struct region;
+void appstate_game_setup(void);
+void appstate_game_teardown(void);
 
-dltask *game_appstate_alloc_detached(const struct region *);
+extern dltask appstate_game_frame;
 
 #endif /* HAMMER_APPSTATE_GAME_H_ */
