@@ -1,4 +1,4 @@
-#include "hammer/appstate/world_config.h"
+#include "hammer/appstate/server_config.h"
 #include "hammer/appstate.h"
 #include "hammer/error.h"
 #include "hammer/glthread.h"
@@ -9,32 +9,30 @@
 #include <stdio.h>
 #include <time.h>
 
-/* xxx rename server config */
-
 #define NUM_EDIT_BUFFER_LEN 32
 
-dltask appstate_world_config_frame;
+dltask appstate_server_config_frame;
 
 static struct {
 	gui_btn_state next_btn_state;
 	gui_btn_state exit_btn_state;
 	int scale;
 	char seed_edit_buf[NUM_EDIT_BUFFER_LEN];
-} world_config;
+} server_config;
 
-static void world_config_frame_async(DL_TASK_ARGS);
+static void server_config_frame_async(DL_TASK_ARGS);
 
-static int world_config_gl_setup(void *);
-static int world_config_gl_frame(void *);
+static int server_config_gl_setup(void *);
+static int server_config_gl_frame(void *);
 
 static unsigned long long random_seed(void);
 static unsigned long long parse_seed(void);
 
 void
-appstate_world_config_setup(void)
+appstate_server_config_setup(void)
 {
-	appstate_world_config_frame = DL_TASK_INIT(world_config_frame_async);
-	world.opts = (struct world_opts) {
+	appstate_server_config_frame = DL_TASK_INIT(server_config_frame_async);
+	server.world.opts = (struct world_opts) {
 		.seed = random_seed(),
 		.scale = 3,
 		.tectonic = {
@@ -56,40 +54,40 @@ appstate_world_config_setup(void)
 			.rift_ticks       = 60
 		}
 	};
-	glthread_execute(world_config_gl_setup, NULL);
-	snprintf(world_config.seed_edit_buf, NUM_EDIT_BUFFER_LEN,
-	         "%llu", world.opts.seed);
-	world_config.next_btn_state = 0;
-	world_config.exit_btn_state = 0;
-	world_config.scale = world.opts.scale;
+	glthread_execute(server_config_gl_setup, NULL);
+	snprintf(server_config.seed_edit_buf, NUM_EDIT_BUFFER_LEN,
+	         "%llu", server.world.opts.seed);
+	server_config.next_btn_state = 0;
+	server_config.exit_btn_state = 0;
+	server_config.scale = server.world.opts.scale;
 }
 
 void
-appstate_world_config_teardown(void)
+appstate_server_config_teardown(void)
 {
 	/* Nothing to free */
 }
 
 static void
-world_config_frame_async(DL_TASK_ARGS)
+server_config_frame_async(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY_VOID;
 
-	if (glthread_execute(world_config_gl_frame, NULL) ||
-	    world_config.exit_btn_state == GUI_BTN_RELEASED)
+	if (glthread_execute(server_config_gl_frame, NULL) ||
+	    server_config.exit_btn_state == GUI_BTN_RELEASED)
 	{
-		appstate_transition(APPSTATE_TRANSITION_CONFIGURE_NEW_WORLD_CANCEL);
+		appstate_transition(APPSTATE_TRANSITION_SERVER_CONFIG_CANCEL);
 		return;
 	}
 
-	if (world_config.next_btn_state == GUI_BTN_RELEASED) {
-		appstate_transition(APPSTATE_TRANSITION_CREATE_NEW_PLANET);
+	if (server_config.next_btn_state == GUI_BTN_RELEASED) {
+		appstate_transition(APPSTATE_TRANSITION_SERVER_PLANET_GEN);
 		return;
 	}
 }
 
 static int
-world_config_gl_setup(void *_)
+server_config_gl_setup(void *_)
 {
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
@@ -97,7 +95,7 @@ world_config_gl_setup(void *_)
 }
 
 static int
-world_config_gl_frame(void *_)
+server_config_gl_frame(void *_)
 {
 	unsigned font_size = 24;
 	unsigned border_padding = 32;
@@ -159,17 +157,17 @@ world_config_gl_frame(void *_)
 			.height = font_size + 2,
 			.size = font_size
 		};
-		if (GUI_BTN_PRESSED == gui_btn(world_config.scale == i,
+		if (GUI_BTN_PRESSED == gui_btn(server_config.scale == i,
 		                               scale_button_text[i],
 		                               scale_btn_opts))
 		{
-			world_config.scale = i;
+			server_config.scale = i;
 		}
 	}
 	gui_stack_break(&stack);
 
 	gui_text("World Seed:  ", normal_text_opts);
-	gui_edit(world_config.seed_edit_buf,  NUM_EDIT_BUFFER_LEN, num_edit_opts);
+	gui_edit(server_config.seed_edit_buf,  NUM_EDIT_BUFFER_LEN, num_edit_opts);
 	unsigned long long parsed_seed = parse_seed();
 	if (parsed_seed == ULLONG_MAX) {
 		gui_text("World seed must be a number", err_text_opts);
@@ -180,13 +178,13 @@ world_config_gl_frame(void *_)
 		gui_text_center("Fix errors above to continue",
 		                window.width / 2, err_text_opts);
 	} else {
-		world.opts.scale = world_config.scale;
-		world.opts.seed = parsed_seed;
-		world_config.next_btn_state = gui_btn(world_config.next_btn_state, "Next", btn_opts);
+		server.world.opts.scale = server_config.scale;
+		server.world.opts.seed = parsed_seed;
+		server_config.next_btn_state = gui_btn(server_config.next_btn_state, "Next", btn_opts);
 	}
 	gui_stack_break(&stack);
 
-	world_config.exit_btn_state = gui_btn(world_config.exit_btn_state, "Exit", btn_opts);
+	server_config.exit_btn_state = gui_btn(server_config.exit_btn_state, "Exit", btn_opts);
 
 	gui_container_pop();
 
@@ -218,10 +216,10 @@ parse_seed(void)
 {
 	unsigned long long parsed_seed;
 	errno = 0;
-	size_t buflen = strlen(world_config.seed_edit_buf);
+	size_t buflen = strlen(server_config.seed_edit_buf);
 	char *endptr;
-	parsed_seed = strtoull(world_config.seed_edit_buf, &endptr, 10);
-	if ((size_t)(endptr - world_config.seed_edit_buf) != buflen ||
+	parsed_seed = strtoull(server_config.seed_edit_buf, &endptr, 10);
+	if ((size_t)(endptr - server_config.seed_edit_buf) != buflen ||
 	    buflen == 0 || errno != 0)
 	{
 		parsed_seed = ULLONG_MAX;

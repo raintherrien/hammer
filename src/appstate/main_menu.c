@@ -46,12 +46,12 @@ main_menu_frame_async(DL_TASK_ARGS)
 	if (glthread_execute(main_menu_gl_frame, NULL) ||
 	    main_menu.exit_btn_state == GUI_BTN_RELEASED)
 	{
-		appstate_transition(APPSTATE_TRANSITION_CLOSE_MAIN_MENU);
+		appstate_transition(APPSTATE_TRANSITION_MAIN_MENU_CLOSE);
 		return;
 	}
 
 	if (main_menu.generate_new_world_btn_state == GUI_BTN_RELEASED) {
-		appstate_transition(APPSTATE_TRANSITION_CONFIGURE_NEW_WORLD);
+		appstate_transition(APPSTATE_TRANSITION_SERVER_CONFIG);
 		return;
 	}
 }

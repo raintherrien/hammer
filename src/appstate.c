@@ -1,9 +1,9 @@
 #include "hammer/appstate.h"
-#include "hammer/appstate/game.h"
+#include "hammer/appstate/client.h"
 #include "hammer/appstate/main_menu.h"
-#include "hammer/appstate/planet_generation.h"
-#include "hammer/appstate/region_generation.h"
-#include "hammer/appstate/world_config.h"
+#include "hammer/appstate/server_config.h"
+#include "hammer/appstate/server_planet_gen.h"
+#include "hammer/appstate/server_region_gen.h"
 #include "hammer/error.h"
 #include <stdio.h>
 
@@ -30,50 +30,50 @@ void
 appstate_transition(int transition)
 {
 	switch (transition) {
-	case APPSTATE_TRANSITION_CLOSE_MAIN_MENU:
+	case APPSTATE_TRANSITION_MAIN_MENU_CLOSE:
 		appstate_main_menu_teardown();
 		dlterminate();
 		break;
-	case APPSTATE_TRANSITION_CONFIGURE_NEW_WORLD:
+	case APPSTATE_TRANSITION_SERVER_CONFIG:
 		appstate_main_menu_teardown();
-		appstate_world_config_setup();
-		appstate_manager.appstate_task = &appstate_world_config_frame;
+		appstate_server_config_setup();
+		appstate_manager.appstate_task = &appstate_server_config_frame;
 		break;
-	case APPSTATE_TRANSITION_CONFIGURE_NEW_WORLD_CANCEL:
-		appstate_world_config_teardown();
+	case APPSTATE_TRANSITION_SERVER_CONFIG_CANCEL:
+		appstate_server_config_teardown();
 		appstate_main_menu_setup();
 		appstate_manager.appstate_task = &appstate_main_menu_frame;
 		break;
-	case APPSTATE_TRANSITION_CREATE_NEW_PLANET:
-		appstate_world_config_teardown();
-		appstate_planet_generation_setup();
-		appstate_manager.appstate_task = &appstate_planet_generation_frame;
+	case APPSTATE_TRANSITION_SERVER_PLANET_GEN:
+		appstate_server_config_teardown();
+		appstate_server_planet_gen_setup();
+		appstate_manager.appstate_task = &appstate_server_planet_gen_frame;
 		break;
-	case APPSTATE_TRANSITION_CREATE_NEW_PLANET_CANCEL:
-		appstate_planet_generation_teardown();
+	case APPSTATE_TRANSITION_SERVER_PLANET_GEN_CANCEL:
+		appstate_server_planet_gen_teardown();
 		appstate_main_menu_setup();
 		appstate_manager.appstate_task = &appstate_main_menu_frame;
 		break;
-	case APPSTATE_TRANSITION_CHOOSE_REGION:
+	case APPSTATE_TRANSITION_SERVER_REGION_GEN:
 		/* Leave planet constructed */
-		appstate_region_generation_setup();
-		appstate_manager.appstate_task = &appstate_region_generation_frame;
+		appstate_server_region_gen_setup();
+		appstate_manager.appstate_task = &appstate_server_region_gen_frame;
 		break;
-	case APPSTATE_TRANSITION_CHOOSE_REGION_CANCEL:
+	case APPSTATE_TRANSITION_SERVER_REGION_GEN_CANCEL:
 		/* Planet still constructed */
-		appstate_planet_generation_reset_region_selection();
-		appstate_region_generation_teardown_discard_region();
-		appstate_manager.appstate_task = &appstate_planet_generation_frame;
+		appstate_server_planet_gen_reset_region_selection();
+		appstate_server_region_gen_teardown_discard_region();
+		appstate_manager.appstate_task = &appstate_server_planet_gen_frame;
 		break;
-	case APPSTATE_TRANSITION_CONFIRM_REGION_AND_ENTER_GAME:
+	case APPSTATE_TRANSITION_CONFIRM_REGION:
 		/* Planet still constructed */
-		appstate_region_generation_teardown_confirm_region();
-		appstate_planet_generation_teardown();
-		appstate_game_setup();
-		appstate_manager.appstate_task = &appstate_game_frame;
+		appstate_server_region_gen_teardown_confirm_region();
+		appstate_server_planet_gen_teardown();
+		appstate_client_setup();
+		appstate_manager.appstate_task = &appstate_client_frame;
 		break;
-	case APPSTATE_TRANSITION_EXIT_GAME:
-		appstate_game_teardown();
+	case APPSTATE_TRANSITION_CLIENT_CLOSE:
+		appstate_client_teardown();
 		appstate_main_menu_setup();
 		appstate_manager.appstate_task = &appstate_main_menu_frame;
 		break;
