@@ -12,8 +12,9 @@ struct world {
 	struct world_opts opts;
 
 	/*
-	 * These structs are only populated during overworld and region
+	 * These structs are only populated during planet and region
 	 * generation due to their large size.
+	 * XXX They belong in their own struct planet
 	 */
 	struct climate      *climate;
 	struct lithosphere  *lithosphere;

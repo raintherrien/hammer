@@ -48,7 +48,7 @@ region_blit(struct region *r,
 	/*
 	 * Blit height information from stream graph onto region.
 	 * NOTE: This is *exactly* the same code we use to render the
-	 * composite image in appstate/overworld_generation.c
+	 * composite image in appstate/planet_generation.c
 	 */
 	size_t tri_count = vector_size(s->tris);
 	for (size_t ti = 0; ti < tri_count; ++ ti) {

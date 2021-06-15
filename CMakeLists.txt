@@ -35,7 +35,7 @@ add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMME
 
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/game.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/overworld_generation.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/planet_generation.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/region_generation.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/world_config.c
                    ${PROJECT_SOURCE_DIR}/src/gui/interaction.c

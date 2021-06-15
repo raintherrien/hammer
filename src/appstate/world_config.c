@@ -81,7 +81,7 @@ world_config_frame_async(DL_TASK_ARGS)
 	}
 
 	if (world_config.next_btn_state == GUI_BTN_RELEASED) {
-		appstate_transition(APPSTATE_TRANSITION_CREATE_NEW_OVERWORLD);
+		appstate_transition(APPSTATE_TRANSITION_CREATE_NEW_PLANET);
 		return;
 	}
 }

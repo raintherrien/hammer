@@ -1,6 +1,6 @@
 #include "hammer/appstate.h"
 #include "hammer/appstate/main_menu.h"
-#include "hammer/appstate/overworld_generation.h"
+#include "hammer/appstate/planet_generation.h"
 #include "hammer/appstate/region_generation.h"
 #include "hammer/appstate/world_config.h"
 #include "hammer/error.h"
@@ -43,26 +43,26 @@ appstate_transition(int transition)
 		appstate_main_menu_setup();
 		appstate_manager.appstate_task = &appstate_main_menu_frame;
 		break;
-	case APPSTATE_TRANSITION_CREATE_NEW_OVERWORLD:
+	case APPSTATE_TRANSITION_CREATE_NEW_PLANET:
 		appstate_world_config_teardown();
-		appstate_overworld_generation_setup();
-		appstate_manager.appstate_task = &appstate_overworld_generation_frame;
+		appstate_planet_generation_setup();
+		appstate_manager.appstate_task = &appstate_planet_generation_frame;
 		break;
-	case APPSTATE_TRANSITION_CREATE_NEW_OVERWORLD_CANCEL:
-		appstate_overworld_generation_teardown();
+	case APPSTATE_TRANSITION_CREATE_NEW_PLANET_CANCEL:
+		appstate_planet_generation_teardown();
 		appstate_main_menu_setup();
 		appstate_manager.appstate_task = &appstate_main_menu_frame;
 		break;
 	case APPSTATE_TRANSITION_CHOOSE_REGION:
-		/* Leave overworld constructed */
+		/* Leave planet constructed */
 		appstate_region_generation_setup();
 		appstate_manager.appstate_task = &appstate_region_generation_frame;
 		break;
 	case APPSTATE_TRANSITION_CHOOSE_REGION_CANCEL:
-		/* Overworld still constructed */
-		appstate_overworld_generation_reset_region_selection();
+		/* Planet still constructed */
+		appstate_planet_generation_reset_region_selection();
 		appstate_region_generation_teardown_discard_region();
-		appstate_manager.appstate_task = &appstate_overworld_generation_frame;
+		appstate_manager.appstate_task = &appstate_planet_generation_frame;
 		break;
 	case APPSTATE_TRANSITION_CONFIRM_REGION_AND_ENTER_WORLD:
 	case APPSTATE_TRANSITION_EXIT_WORLD:
