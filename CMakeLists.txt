@@ -48,6 +48,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/game.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/region.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/stream.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate.c
                    ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
                    ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
@@ -64,7 +65,8 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/game.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
-                   ${PROJECT_SOURCE_DIR}/src/window.c)
+                   ${PROJECT_SOURCE_DIR}/src/window.c
+                   ${PROJECT_SOURCE_DIR}/src/world.c)
 if(PNG_FOUND)
 	list(APPEND HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/image.c)
 endif()

@@ -1,112 +1,102 @@
 #include "hammer/appstate/world_config.h"
-#include "hammer/appstate/overworld_generation.h"
-#include "hammer/cli.h"
+#include "hammer/appstate.h"
 #include "hammer/error.h"
 #include "hammer/glthread.h"
-#include "hammer/mem.h"
-#include "hammer/version.h"
+#include "hammer/gui.h"
 #include "hammer/window.h"
-#include <errno.h>
+#include "hammer/world.h"
 #include <limits.h>
 #include <stdio.h>
 #include <time.h>
 
 #define NUM_EDIT_BUFFER_LEN 32
 
-struct world_config_appstate {
-	dltask task;
-	struct world_opts opts;
+dltask appstate_world_config_frame;
+
+static struct {
 	gui_btn_state next_btn_state;
 	gui_btn_state exit_btn_state;
 	int scale;
 	char seed_edit_buf[NUM_EDIT_BUFFER_LEN];
-};
+} world_config;
 
-static void world_config_entry(DL_TASK_ARGS);
-static void world_config_loop(DL_TASK_ARGS);
-static void world_config_exit(DL_TASK_ARGS);
+static void world_config_frame_async(DL_TASK_ARGS);
 
 static int world_config_gl_setup(void *);
 static int world_config_gl_frame(void *);
 
 static unsigned long long random_seed(void);
-static unsigned long long parse_seed(struct world_config_appstate *);
+static unsigned long long parse_seed(void);
 
-dltask *
-world_config_appstate_alloc_detached(void)
+void
+appstate_world_config_setup(void)
 {
-	struct world_config_appstate *world_config =
-		xmalloc(sizeof(*world_config));
-	world_config->task = DL_TASK_INIT(world_config_entry);
-	world_config->opts = (struct world_opts) {
+	appstate_world_config_frame = DL_TASK_INIT(world_config_frame_async);
+	world.opts = (struct world_opts) {
 		.seed = random_seed(),
-		.scale = 3
+		.scale = 3,
+		.tectonic = {
+			.collision_xfer   = 0.035f,
+			.subduction_xfer  = 0.025f,
+			.merge_ratio      = 0.2f,
+			.rift_mass        = 0.9f,
+			.volcano_mass     = 15.0f,
+			.volcano_chance   = 0.01f,
+			.continent_talus  = 0.05f,
+			.ocean_talus      = 0.025f,
+			.generation_steps = 100,
+			.generations      = 2,
+			.min_plates       = 10,
+			.max_plates       = 25,
+			.segment_radius   = 2,
+			.divergent_radius = 5,
+			.erosion_ticks    = 5,
+			.rift_ticks       = 60
+		}
 	};
-	return &world_config->task;
+	glthread_execute(world_config_gl_setup, NULL);
+	snprintf(world_config.seed_edit_buf, NUM_EDIT_BUFFER_LEN,
+	         "%llu", world.opts.seed);
+	world_config.next_btn_state = 0;
+	world_config.exit_btn_state = 0;
+	world_config.scale = world.opts.scale;
+}
+
+void
+appstate_world_config_teardown(void)
+{
+	/* Nothing to free */
 }
 
 static void
-world_config_entry(DL_TASK_ARGS)
+world_config_frame_async(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct world_config_appstate, world_config, task);
+	DL_TASK_ENTRY_VOID;
 
-	glthread_execute(world_config_gl_setup, world_config);
-	snprintf(world_config->seed_edit_buf, NUM_EDIT_BUFFER_LEN,
-	         "%llu", world_config->opts.seed);
-	world_config->next_btn_state = 0;
-	world_config->exit_btn_state = 0;
-	world_config->scale = world_config->opts.scale;
-
-	dltail(&world_config->task, world_config_loop);
-}
-
-static void
-world_config_loop(DL_TASK_ARGS)
-{
-	DL_TASK_ENTRY(struct world_config_appstate, world_config, task);
-
-	if (glthread_execute(world_config_gl_frame, world_config) ||
-	    world_config->exit_btn_state == GUI_BTN_RELEASED)
+	if (glthread_execute(world_config_gl_frame, NULL) ||
+	    world_config.exit_btn_state == GUI_BTN_RELEASED)
 	{
-		dltail(&world_config->task, world_config_exit);
+		appstate_transition(APPSTATE_TRANSITION_CONFIGURE_NEW_WORLD_CANCEL);
 		return;
 	}
 
-	if (world_config->next_btn_state == GUI_BTN_RELEASED) {
-		dltask *next = overworld_generation_appstate_alloc_detached(
-		                 &world_config->opts);
-		dlcontinuation(&world_config->task, world_config_exit);
-		dlwait(&world_config->task, 1);
-		dlnext(next, &world_config->task);
-		dlasync(next);
+	if (world_config.next_btn_state == GUI_BTN_RELEASED) {
+		appstate_transition(APPSTATE_TRANSITION_CREATE_NEW_OVERWORLD);
 		return;
 	}
-
-	dltail(&world_config->task, world_config_loop);
-}
-
-static void
-world_config_exit(DL_TASK_ARGS)
-{
-	DL_TASK_ENTRY(struct world_config_appstate, world_config, task);
-	free(world_config);
 }
 
 static int
-world_config_gl_setup(void *world_config)
+world_config_gl_setup(void *_)
 {
-	(void) world_config;
-
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
 	return 0;
 }
 
 static int
-world_config_gl_frame(void *world_config_)
+world_config_gl_frame(void *_)
 {
-	struct world_config_appstate *world_config = world_config_;
-
 	unsigned font_size = 24;
 	unsigned border_padding = 32;
 	unsigned element_padding = 8;
@@ -167,18 +157,18 @@ world_config_gl_frame(void *world_config_)
 			.height = font_size + 2,
 			.size = font_size
 		};
-		if (GUI_BTN_PRESSED == gui_btn(world_config->scale == i,
+		if (GUI_BTN_PRESSED == gui_btn(world_config.scale == i,
 		                               scale_button_text[i],
 		                               scale_btn_opts))
 		{
-			world_config->scale = i;
+			world_config.scale = i;
 		}
 	}
 	gui_stack_break(&stack);
 
 	gui_text("World Seed:  ", normal_text_opts);
-	gui_edit(world_config->seed_edit_buf,  NUM_EDIT_BUFFER_LEN, num_edit_opts);
-	unsigned long long parsed_seed = parse_seed(world_config);
+	gui_edit(world_config.seed_edit_buf,  NUM_EDIT_BUFFER_LEN, num_edit_opts);
+	unsigned long long parsed_seed = parse_seed();
 	if (parsed_seed == ULLONG_MAX) {
 		gui_text("World seed must be a number", err_text_opts);
 	}
@@ -188,13 +178,13 @@ world_config_gl_frame(void *world_config_)
 		gui_text_center("Fix errors above to continue",
 		                window.width / 2, err_text_opts);
 	} else {
-		world_config->opts.scale = world_config->scale;
-		world_config->opts.seed = parsed_seed;
-		world_config->next_btn_state = gui_btn(world_config->next_btn_state, "Next", btn_opts);
+		world.opts.scale = world_config.scale;
+		world.opts.seed = parsed_seed;
+		world_config.next_btn_state = gui_btn(world_config.next_btn_state, "Next", btn_opts);
 	}
 	gui_stack_break(&stack);
 
-	world_config->exit_btn_state = gui_btn(world_config->exit_btn_state, "Exit", btn_opts);
+	world_config.exit_btn_state = gui_btn(world_config.exit_btn_state, "Exit", btn_opts);
 
 	gui_container_pop();
 
@@ -222,14 +212,14 @@ random_seed(void)
 }
 
 static unsigned long long
-parse_seed(struct world_config_appstate *world_config)
+parse_seed(void)
 {
 	unsigned long long parsed_seed;
 	errno = 0;
-	size_t buflen = strlen(world_config->seed_edit_buf);
+	size_t buflen = strlen(world_config.seed_edit_buf);
 	char *endptr;
-	parsed_seed = strtoull(world_config->seed_edit_buf, &endptr, 10);
-	if ((size_t)(endptr - world_config->seed_edit_buf) != buflen ||
+	parsed_seed = strtoull(world_config.seed_edit_buf, &endptr, 10);
+	if ((size_t)(endptr - world_config.seed_edit_buf) != buflen ||
 	    buflen == 0 || errno != 0)
 	{
 		parsed_seed = ULLONG_MAX;

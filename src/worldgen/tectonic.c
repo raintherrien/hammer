@@ -79,7 +79,7 @@
  * Populates a divergent cell with no owner with magma and assignes a plate.
  */
 static void divergent_cell(struct lithosphere *, uint32_t,
-                           const struct tectonic_opts *);
+                           const struct world_opts *);
 
 /*
  * Subdivides current mass map into a new set of plates. Note: any currently
@@ -87,7 +87,7 @@ static void divergent_cell(struct lithosphere *, uint32_t,
  * function results in more mass loss throughout the map.
  */
 static void lithosphere_create_plates(struct lithosphere *,
-                                      const struct tectonic_opts *);
+                                      const struct world_opts *);
 
 /*
  * Initializes the mass map with coherent wrapping noise.
@@ -98,12 +98,12 @@ static void lithosphere_init_mass(struct lithosphere *);
  * Performs one iteration of the tectonic uplift algorithm.
  */
 static void lithosphere_update_impl(struct lithosphere *,
-                               const struct tectonic_opts *);
+                               const struct world_opts *);
 
 /*
  * Erodes mass within plate boundary.
  */
-static void plate_erode(struct plate *, const struct tectonic_opts *);
+static void plate_erode(struct plate *, const struct world_opts *);
 
 /*
  * Transfers all mass from the source segment in the source plate to the
@@ -119,7 +119,7 @@ static void plate_collide(struct lithosphere *l,
  * transfer and identify collisions which may result in segments merging.
  */
 static void plate_blit(struct lithosphere *, uint32_t pi,
-                       const struct tectonic_opts *);
+                       const struct world_opts *);
 
 /*
  * Moves material m to a plate as a result of a collision
@@ -140,15 +140,15 @@ static void plate_init_velocity(struct plate *, WELL512);
 
 /*
  * plate_segment() subdivides the plate's continental mass into segments. See
- * tectonic_opts.segment_radius for details.
+ * world_opts.tectonic.segment_radius for details.
  *
  * plate_growbfs_segment() is the breadth-first search component of finding
  * segments.
  */
 static void plate_growbfs_segment(struct plate *, uint32_t **bfs, uint16_t si,
-                                  const struct tectonic_opts *);
+                                  const struct world_opts *);
 static void plate_segment(struct plate *, uint16_t *sid_ter,
-                          const struct tectonic_opts *);
+                          const struct world_opts *);
 
 /*
  * Sets or adds crust to a plate, and assigns that mass to a segment, using
@@ -189,7 +189,7 @@ plate_to_lithosphere(struct plate *p, uint32_t px, uint32_t py, uint32_t lxy[2])
 }
 
 void
-lithosphere_create(struct lithosphere *l, const struct tectonic_opts *opts)
+lithosphere_create(struct lithosphere *l, const struct world_opts *opts)
 {
 	memset(l, 0, sizeof(*l));
 	WELL512_seed(l->rng, opts->seed);
@@ -207,9 +207,9 @@ lithosphere_destroy(struct lithosphere *l)
 }
 
 void
-lithosphere_update(struct lithosphere *l, const struct tectonic_opts *opts)
+lithosphere_update(struct lithosphere *l, const struct world_opts *opts)
 {
-	if (l->generation % opts->generation_steps == 0) {
+	if (l->generation % opts->tectonic.generation_steps == 0) {
 		size_t plate_count = vector_size(l->plates);
 		for (uint32_t p = 0; p < plate_count; ++ p)
 			plate_destroy(l->plates + p);
@@ -261,13 +261,13 @@ lithosphere_blit(struct lithosphere *l, float *uplift, unsigned long size)
 
 static void
 divergent_cell(struct lithosphere *l, uint32_t i,
-               const struct tectonic_opts *opts)
+               const struct world_opts *opts)
 {
 	uint32_t po = l->prev_owner[i];
 	uint32_t x = i % LITHOSPHERE_LEN;
 	uint32_t y = i / LITHOSPHERE_LEN;
 	float h = TECTONIC_OCEAN_FLOOR_MASS;
-	long r = opts->divergent_radius;
+	long r = opts->tectonic.divergent_radius;
 	for (long dy = -r; dy <= r; ++ dy)
 	for (long dx = -r; dx <= r; ++ dx) {
 		if (dy == 0 && dx == 0)
@@ -289,11 +289,11 @@ divergent_cell(struct lithosphere *l, uint32_t i,
 		.metamorphic = 0,
 		.igneous = h * TECTONIC_CONTINENT_MASS + TECTONIC_OCEAN_FLOOR_MASS
 	};
-	if (l->generation % opts->rift_ticks == (opts->rift_ticks-1)) {
-		if (WELL512f(l->rng) <= opts->volcano_chance)
-			new_mass.igneous = opts->volcano_mass;
+	if (l->generation % opts->tectonic.rift_ticks == (opts->tectonic.rift_ticks-1)) {
+		if (WELL512f(l->rng) <= opts->tectonic.volcano_chance)
+			new_mass.igneous = opts->tectonic.volcano_mass;
 		else
-			new_mass.igneous = opts->rift_mass;
+			new_mass.igneous = opts->tectonic.rift_mass;
 	}
 	l->owner[i] = po;
 	plate_set_mass(l->plates + po, x, y, new_mass, NO_SEGMENT);
@@ -301,7 +301,7 @@ divergent_cell(struct lithosphere *l, uint32_t i,
 
 static void
 lithosphere_create_plates(struct lithosphere *l,
-                          const struct tectonic_opts *opts)
+                          const struct world_opts *opts)
 {
 	/* Assign each cell an owner plate */
 	memset(l->owner, 0xFF, LITHOSPHERE_AREA * sizeof(*l->owner));
@@ -310,9 +310,9 @@ lithosphere_create_plates(struct lithosphere *l,
 	uint32_t *growing = NULL;
 
 	/* Create initial plates */
-	size_t plate_count = opts->min_plates +
-	                     (WELL512i(l->rng) % (opts->max_plates -
-	                                          opts->min_plates));
+	size_t plate_count = opts->tectonic.min_plates +
+	                     (WELL512i(l->rng) % (opts->tectonic.max_plates -
+	                                          opts->tectonic.min_plates));
 	for (uint32_t pi = 0; pi < plate_count; ++ pi) {
 		struct plate *p = vector_pushz(&l->plates);
 		reclaim: ;
@@ -489,7 +489,7 @@ lithosphere_init_mass(struct lithosphere *l)
 
 static void
 lithosphere_update_impl(struct lithosphere *l,
-                        const struct tectonic_opts *opts)
+                        const struct world_opts *opts)
 {
 	++ l->generation;
 
@@ -561,7 +561,7 @@ lithosphere_update_impl(struct lithosphere *l,
 			 * If our segments overlap more than some ratio, merge
 			 * the smaller onto the larger.
 			 */
-			if (overlap / smaller_area >= opts->merge_ratio) {
+			if (overlap / smaller_area >= opts->tectonic.merge_ratio) {
 				if (s0->area > s1->area)
 					plate_collide(l, l->owner[dst], c->plate_index, si1, si0);
 				else
@@ -587,13 +587,13 @@ lithosphere_update_impl(struct lithosphere *l,
 			divergent_cell(l, i, opts);
 
 	/* Apply erosion */
-	if (l->generation % opts->erosion_ticks == 0)
+	if (l->generation % opts->tectonic.erosion_ticks == 0)
 		for (uint32_t pi = 0; pi < plate_count; ++ pi)
 			plate_erode(l->plates + pi, opts);
 }
 
 static void
-plate_erode(struct plate *p, const struct tectonic_opts *opts)
+plate_erode(struct plate *p, const struct world_opts *opts)
 {
 	/* Very basic erosion */
 	for (uint32_t y = 0; y < p->h; ++ y)
@@ -617,8 +617,8 @@ plate_erode(struct plate *p, const struct tectonic_opts *opts)
 		};
 		float nh[8];
 		float talus = h < TECTONIC_CONTINENT_MASS
-		                ? opts->ocean_talus
-		                : opts->continent_talus;
+		                ? opts->tectonic.ocean_talus
+		                : opts->tectonic.continent_talus;
 		for (size_t i = 0; i < 8; ++ i) {
 			size_t n = ni[i];
 			float nm = p->mass[n].sediment +
@@ -728,7 +728,7 @@ segment_overlap(struct plate *p0, struct plate *p1, uint16_t si0, uint16_t si1)
 
 static void
 plate_blit(struct lithosphere *l, uint32_t pi,
-           const struct tectonic_opts *opts)
+           const struct world_opts *opts)
 {
 	struct plate *p = l->plates + pi;
 	for (uint32_t y = 0; y < LITHOSPHERE_LEN; ++ y)
@@ -765,7 +765,7 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 		if (src_total_mass < TECTONIC_CONTINENT_MASS &&
 		    dst_total_mass > src_total_mass)
 		{
-			float xfer = MAX(MIN_XFER, opts->subduction_xfer * src_total_mass);
+			float xfer = MAX(MIN_XFER, opts->tectonic.subduction_xfer * src_total_mass);
 			/* Remove transferred mass from source */
 			remove_mass(&p->mass[src], xfer);
 			src_total_mass -= xfer;
@@ -786,7 +786,7 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 		 * collision. We certainly could...
 		 */
 		else if (dst_total_mass < TECTONIC_CONTINENT_MASS) {
-			float xfer = MAX(MIN_XFER, opts->subduction_xfer * dst_total_mass);
+			float xfer = MAX(MIN_XFER, opts->tectonic.subduction_xfer * dst_total_mass);
 			/* Remove transferred mass from source */
 			remove_mass(&prev_plate->mass[prev_src], xfer);
 			remove_mass(&l->mass[dst], xfer);
@@ -808,7 +808,7 @@ plate_blit(struct lithosphere *l, uint32_t pi,
 		 * pretty horrid streaking, so this plate always subducts.
 		 */
 		else {
-			float xfer = MAX(MIN_XFER, opts->collision_xfer * src_total_mass);
+			float xfer = MAX(MIN_XFER, opts->tectonic.collision_xfer * src_total_mass);
 			remove_mass(&p->mass[src], xfer);
 			src_total_mass -= xfer;
 			prev_plate->mass[prev_src].metamorphic += xfer;
@@ -904,7 +904,7 @@ plate_cell_collision(struct plate *p, uint32_t wx, uint32_t wy,
 
 static void
 plate_growbfs_segment(struct plate *p, uint32_t **bfs, uint16_t si,
-                      const struct tectonic_opts *opts)
+                      const struct world_opts *opts)
 {
 	/*
 	 * Funny how this ended up looking so much like our plate generation
@@ -916,7 +916,7 @@ plate_growbfs_segment(struct plate *p, uint32_t **bfs, uint16_t si,
 		ring_pop(bfs);
 		long srcx = source % LITHOSPHERE_LEN;
 		long srcy = source / LITHOSPHERE_LEN;
-		long r = opts->segment_radius;
+		long r = opts->tectonic.segment_radius;
 		for (long yy = -r; yy <= r; ++ yy)
 		for (long xx = -r; xx <= r; ++ xx) {
 			uint32_t py = wrap(srcy + yy);
@@ -980,7 +980,7 @@ plate_init_velocity(struct plate *p, WELL512 rng)
 
 static void
 plate_segment(struct plate *p, uint16_t *sid_ter,
-              const struct tectonic_opts *opts)
+              const struct world_opts *opts)
 {
 	vector_clear(&p->segments);
 	memset(p->in_segment, 0xFF, LITHOSPHERE_AREA * sizeof(*p->in_segment));

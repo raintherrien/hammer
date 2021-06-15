@@ -1,6 +1,21 @@
-# Hammer
+# hammer
 
-A compilation of bad practices and anti-patterns.
+A compilation of bad practices and anti-patterns. Don't judge me for this code. Especially if I sent you my resume *wink wink*. There are two topics I want to explore with hammer:
+#### Feasibility of fine grained task scheduling using [deadlock](https://github.com/raintherrien/deadlock)
+Stackful coroutines have already seen widespread adoption in the form of ucontext, [Windows Fibers](https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createfiber), [Boost.fiber](https://github.com/boostorg/fiber), Goroutines, and C#'s Task Parallel Library to name a few.
+
+There are plenty of C libraries that dip into the undefined nether realms of `asm` to bring us stackful coroutines but let's be honest, no one wants to deal with that. ARM is probably the future and I don't really want to learn another ISA.
+
+With C++20 we now have stackless coroutine support in the standard library. There are plenty of event driven frameworks too. [Some languages](https://ziglang.org/) even incorporate one into the standard library. That's basically what deadlock is but with **transparent memory allocation** and **dead simple task graphs** with no concurrency controls required.
+
+#### Modern procedural programming; Not functional, not Object Oriented
+The heap is overrated. What ever happened to .bss?
+Let's talk about the anti-global sentiment.
+Wasn't file scope really the OG object?
+Seriously though go read some of the code [id Software](https://github.com/id-Software) open sourced. It's fantastic.
+
+I find it interesting that multithreaded code and global state are often presented irreconcilably. Of course it is true that blindly multithreading code that mutates a global state is undefined behavior, and best it's not easy to get **correct**, what I hope to learn from writing hammer this way is how to write multithreaded code **well**.
+I want to stop asking the questions: *Does this need a callback? Why do you need an atomic shared_ptr? Who even owns this data???*
 
 ## Terrain generation
 Terrain generation is currently (2021-05-11) composed of three steps, each of which is an amalgamation of research papers, held together with crap code (my contribution):

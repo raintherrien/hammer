@@ -1,17 +1,8 @@
 #include "hammer/map3.h"
 #include "hammer/mem.h"
-#include <stdint.h>
 
 #define MAP3_RESIZE_RATIO 0.9f
 #define MAP3_INIT_SIZE 128
-#define MAP3_NIL_HASH UINT64_MAX
-
-struct map3_entry {
-	void *data;
-	uint64_t hash;
-	size_t probe_length;
-	int x, y, z;
-};
 
 static uint64_t map3_hash(int x, int y, int z);
 static int      map3_eq(const struct map3_entry *, uint64_t, int, int, int);
@@ -58,8 +49,10 @@ map3_resize(struct map3 *m)
 	}
 
 	/* No need to rehash since we store unbounded hashes */
-	for (size_t i = 0; i < oldsize; ++ i)
-		map3_put_impl(m, oldentries[i]);
+	for (size_t i = 0; i < oldsize; ++ i) {
+		if (map3_isvalid(&oldentries[i]))
+			map3_put_impl(m, oldentries[i]);
+	}
 
 	free(oldentries);
 }

@@ -16,7 +16,7 @@ xmalloc_impl(size_t        size,
              unsigned long line)
 {
 	void *mem = malloc(size);
-	if (mem == NULL) {
+	if (mem == NULL && size != 0) {
 		xperrorva_impl(file, function, line,
 		               "xmalloc failed to allocate %zu bytes", size);
 		exit(errno);

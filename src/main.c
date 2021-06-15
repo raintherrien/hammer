@@ -1,6 +1,6 @@
 #include "hammer/cli.h"
 #include "hammer/error.h"
-#include "hammer/appstate/main_menu.h"
+#include "hammer/appstate.h"
 #include "hammer/glthread.h"
 #include <deadlock/dl.h>
 #include <float.h>
@@ -22,8 +22,7 @@ main(int argc, char **argv)
 
 	glthread_create();
 
-	dltask *main_menu_task = main_menu_appstate_alloc_detached();
-	if (dlmainex(main_menu_task, NULL, NULL, rtargs.tc))
+	if (dlmainex(appstate_runner(), NULL, NULL, rtargs.tc))
 		xperror("Error creating deadlock scheduler");
 
 	glthread_destroy();

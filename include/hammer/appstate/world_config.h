@@ -3,11 +3,9 @@
 
 #include <deadlock/dl.h>
 
-struct world_opts {
-	unsigned long long seed;
-	unsigned scale;
-};
+void appstate_world_config_setup(void);
+void appstate_world_config_teardown(void);
 
-dltask *world_config_appstate_alloc_detached(void);
+extern dltask appstate_world_config_frame;
 
 #endif /* HAMMER_APPSTATE_WORLD_CONFIG_H_ */

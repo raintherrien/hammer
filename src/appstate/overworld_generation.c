@@ -1,57 +1,64 @@
-#include "hammer/appstate/overworld_generation.h"
-#include "hammer/appstate/region_generation.h"
-#include "hammer/appstate/world_config.h"
-#include "hammer/cli.h"
-#include "hammer/error.h"
+#include "hammer/appstate.h"
 #include "hammer/glthread.h"
 #include "hammer/gui.h"
-#include "hammer/math.h"
 #include "hammer/mem.h"
 #include "hammer/vector.h"
 #include "hammer/window.h"
+#include "hammer/world.h"
 #include "hammer/worldgen/biome.h"
 #include "hammer/worldgen/climate.h"
 #include "hammer/worldgen/region.h"
 #include "hammer/worldgen/stream.h"
 #include "hammer/worldgen/tectonic.h"
+#include <float.h>
+#include <string.h>
 
 #define PROGRESS_STR_MAX_LEN 64
 #define BIOME_TOOLTIP_STR_MAX_LEN 64
 
-/* TODO: Images never freed, mouse never potentially released */
+dltask appstate_overworld_generation_frame;
 
-struct overworld_generation_appstate {
-	dltask               task;
-	struct tectonic_opts tectonic_opts;
-	struct world_opts    world_opts;
-	struct lithosphere  *lithosphere;
-	struct climate      *climate;
-	struct stream_graph *stream;
-	void                *composite;
-	void                *focussed_img;
-	gui_btn_state        cancel_btn_state;
-	unsigned long        stream_size;
-	float                min_map_zoom;
-	float                map_zoom;
-	float                map_tran_x;
-	float                map_tran_y;
-	float                selected_region_x;
-	float                selected_region_y;
-	unsigned             selected_region_size_mag2;
-	GLuint               lithosphere_img;
-	GLuint               climate_img;
-	GLuint               stream_img;
-	GLuint               composite_img;
-	int                  mouse_captured;
-	int                  paused;
-	char                 lithosphere_progress_str[PROGRESS_STR_MAX_LEN];
-	char                 climate_progress_str[PROGRESS_STR_MAX_LEN];
-	char                 stream_progress_str[PROGRESS_STR_MAX_LEN];
-	char                 biome_tooltip_str[BIOME_TOOLTIP_STR_MAX_LEN];
+enum overworld_stage {
+	OVERWORLD_STAGE_LITHOSPHERE,
+	OVERWORLD_STAGE_CLIMATE,
+	OVERWORLD_STAGE_STREAM,
+	OVERWORLD_STAGE_COMPOSITE,
 };
 
-static void overworld_generation_entry(DL_TASK_ARGS);
-static void overworld_generation_exit(DL_TASK_ARGS);
+static struct {
+	/*
+	 * This state performs three stages of terrain generation: tectonic,
+	 * climate, and stream graph. The user can flip between rendered world
+	 * images of each stage, zoom, and pan around. Eventually they will
+	 * select a region to continue.
+	 */
+	enum overworld_stage current_stage;
+	enum overworld_stage focussed_stage;
+	gui_btn_state        cancel_btn_state;
+	unsigned long        composite_size;
+
+	float min_map_zoom;
+	float map_zoom;
+	float map_tran_x;
+	float map_tran_y;
+
+	float selected_region_x;
+	float selected_region_y;
+	unsigned selected_region_size_mag2;
+
+	GLuint lithosphere_img;
+	GLuint climate_img;
+	GLuint stream_img;
+	GLuint composite_img;
+
+	int mouse_captured;
+	int paused;
+
+	char lithosphere_progress_str[PROGRESS_STR_MAX_LEN];
+	char climate_progress_str[PROGRESS_STR_MAX_LEN];
+	char stream_progress_str[PROGRESS_STR_MAX_LEN];
+	char biome_tooltip_str[BIOME_TOOLTIP_STR_MAX_LEN];
+} overworld_generation;
 
 static int overworld_generation_gl_setup(void *);
 static int overworld_generation_gl_frame(void *);
@@ -61,223 +68,186 @@ static int overworld_generation_gl_blit_climate_image(void *);
 static int overworld_generation_gl_blit_stream_image(void *);
 static int overworld_generation_gl_blit_composite_image(void *);
 
-static void viz_lithosphere_loop(DL_TASK_ARGS);
-static void viz_climate_loop(DL_TASK_ARGS);
-static void viz_stream_loop(DL_TASK_ARGS);
-static void viz_composite_loop(DL_TASK_ARGS);
-static void post_region_generation(DL_TASK_ARGS);
+static void overworld_generation_frame_async(DL_TASK_ARGS);
 
-dltask *
-overworld_generation_appstate_alloc_detached(struct world_opts *world_opts)
+static void overworld_generation_lithosphere_frame(void);
+static void overworld_generation_climate_frame(void);
+static void overworld_generation_stream_frame(void);
+static void overworld_generation_composite_frame(void);
+
+void
+appstate_overworld_generation_setup(void)
 {
-	struct overworld_generation_appstate *wg = xmalloc(sizeof(*wg));
+	appstate_overworld_generation_frame = DL_TASK_INIT(overworld_generation_frame_async);
 
-	wg->task = DL_TASK_INIT(overworld_generation_entry);
-	/* TODO: Set tectonic params in world_config */
-	wg->tectonic_opts = (struct tectonic_opts) {
-		TECTONIC_OPTS_DEFAULTS,
-		.seed = world_opts->seed
-	};
-	wg->world_opts = *world_opts;
-	wg->lithosphere = NULL;
-	wg->climate = NULL;
-	wg->stream = NULL;
-	wg->composite = NULL;
-	wg->stream_size = 1 << (9 + wg->world_opts.scale);
+	world.lithosphere = xmalloc(sizeof(*world.lithosphere));
+	world.climate = xmalloc(sizeof(*world.climate));
+	world.stream = xmalloc(sizeof(*world.stream));
+	lithosphere_create(world.lithosphere, &world.opts);
 
-	return &wg->task;
-}
+	overworld_generation.current_stage = OVERWORLD_STAGE_LITHOSPHERE;
+	overworld_generation.focussed_stage = OVERWORLD_STAGE_LITHOSPHERE;
+	overworld_generation.cancel_btn_state = 0;
+	overworld_generation.composite_size = 1 << (9 + world.opts.scale);
 
-static void
-overworld_generation_entry(DL_TASK_ARGS)
-{
-	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
-
-	glthread_execute(overworld_generation_gl_setup, wg);
-	wg->cancel_btn_state = 0;
-	wg->mouse_captured = 0;
-	wg->paused = 0;
-	wg->min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
+	overworld_generation.min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
 	                       (float)window.height / LITHOSPHERE_LEN);
-	wg->map_zoom = wg->min_map_zoom;
-	wg->map_tran_x = 0;
-	wg->map_tran_y = 0;
-	wg->selected_region_x = FLT_MAX;
-	wg->selected_region_y = FLT_MAX;
-	wg->selected_region_size_mag2 = 0;
+	overworld_generation.map_zoom = overworld_generation.min_map_zoom;
+	overworld_generation.map_tran_x = 0;
+	overworld_generation.map_tran_y = 0;
 
-	/* Kick off lithosphere loop */
-	wg->lithosphere = xmalloc(sizeof(*wg->lithosphere));
-	wg->focussed_img = wg->lithosphere;
-	lithosphere_create(wg->lithosphere, &wg->tectonic_opts);
-	dltail(&wg->task, viz_lithosphere_loop);
+	overworld_generation.selected_region_x = FLT_MAX;
+	overworld_generation.selected_region_y = FLT_MAX;
+	overworld_generation.selected_region_size_mag2 = 0;
+
+	overworld_generation.mouse_captured = 0;
+	overworld_generation.paused = 0;
+
+	memset(overworld_generation.lithosphere_progress_str, 0, PROGRESS_STR_MAX_LEN * sizeof(char));
+	memset(overworld_generation.climate_progress_str, 0, PROGRESS_STR_MAX_LEN * sizeof(char));
+	memset(overworld_generation.stream_progress_str, 0, PROGRESS_STR_MAX_LEN * sizeof(char));
+	memset(overworld_generation.biome_tooltip_str, 0, PROGRESS_STR_MAX_LEN * sizeof(char));
+
+	glthread_execute(overworld_generation_gl_setup, NULL);
+}
+
+void
+appstate_overworld_generation_teardown(void)
+{
+	/* TODO: Images never freed, mouse never potentially released */
+
+	if (world.stream) {
+		if (overworld_generation.current_stage >= OVERWORLD_STAGE_STREAM)
+			stream_graph_destroy(world.stream);
+		free(world.stream);
+		world.stream = NULL;
+	}
+	if (world.climate) {
+		if (overworld_generation.current_stage >= OVERWORLD_STAGE_CLIMATE)
+			climate_destroy(world.climate);
+		free(world.climate);
+		world.climate = NULL;
+	}
+	if (world.lithosphere) {
+		lithosphere_destroy(world.lithosphere);
+		free(world.lithosphere);
+		world.lithosphere = NULL;
+	}
+}
+
+void
+appstate_overworld_generation_reset_region_selection(void)
+{
+	overworld_generation.selected_region_x = FLT_MAX;
+	overworld_generation.selected_region_y = FLT_MAX;
 }
 
 static void
-overworld_generation_exit(DL_TASK_ARGS)
+overworld_generation_frame_async(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
+	DL_TASK_ENTRY_VOID;
 
-	if (wg->stream) {
-		stream_graph_destroy(wg->stream);
-		free(wg->stream);
-	}
-	if (wg->climate) {
-		climate_destroy(wg->climate);
-		free(wg->climate);
-	}
-	if (wg->lithosphere) {
-		lithosphere_destroy(wg->lithosphere);
-		free(wg->lithosphere);
-	}
-	free(wg);
-}
-
-static void
-viz_lithosphere_loop(DL_TASK_ARGS)
-{
-	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
-
-	if (glthread_execute(overworld_generation_gl_frame, wg) ||
-	    wg->cancel_btn_state == GUI_BTN_RELEASED)
+	if (glthread_execute(overworld_generation_gl_frame, NULL) ||
+	    overworld_generation.cancel_btn_state == GUI_BTN_RELEASED)
 	{
-		dltail(&wg->task, overworld_generation_exit);
+		appstate_transition(APPSTATE_TRANSITION_CONFIGURE_NEW_WORLD_CANCEL);
 		return;
 	}
 
-	size_t steps = wg->tectonic_opts.generations *
-	                 wg->tectonic_opts.generation_steps;
-	if (wg->lithosphere->generation >= steps) {
+	switch (overworld_generation.current_stage) {
+	case OVERWORLD_STAGE_LITHOSPHERE:
+		overworld_generation_lithosphere_frame();
+		break;
+	case OVERWORLD_STAGE_CLIMATE:
+		overworld_generation_climate_frame();
+		break;
+	case OVERWORLD_STAGE_STREAM:
+		overworld_generation_stream_frame();
+		break;
+	case OVERWORLD_STAGE_COMPOSITE:
+		overworld_generation_composite_frame();
+		break;
+	};
+}
+
+static void
+overworld_generation_lithosphere_frame(void)
+{
+	size_t steps = world.opts.tectonic.generations *
+	                 world.opts.tectonic.generation_steps;
+	if (world.lithosphere->generation >= steps) {
 		/* Kick off climate loop */
-		wg->climate = xmalloc(sizeof(*wg->climate));
-		wg->focussed_img = wg->climate;
-		climate_create(wg->climate, wg->lithosphere);
-		dltail(&wg->task, viz_climate_loop);
+		climate_create(world.climate, world.lithosphere);
+		overworld_generation.current_stage = OVERWORLD_STAGE_CLIMATE;
+		overworld_generation.focussed_stage = OVERWORLD_STAGE_CLIMATE;
 		return;
 	}
 
-	if (!wg->paused) {
-		lithosphere_update(wg->lithosphere, &wg->tectonic_opts);
-		glthread_execute(overworld_generation_gl_blit_lithosphere_image, wg);
+	if (!overworld_generation.paused) {
+		lithosphere_update(world.lithosphere, &world.opts);
+		glthread_execute(overworld_generation_gl_blit_lithosphere_image, NULL);
 	}
-
-	dltail(&wg->task, viz_lithosphere_loop);
 }
 
 static void
-viz_climate_loop(DL_TASK_ARGS)
+overworld_generation_climate_frame(void)
 {
-	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
-
-	if (glthread_execute(overworld_generation_gl_frame, wg) ||
-	    wg->cancel_btn_state == GUI_BTN_RELEASED)
-	{
-		dltail(&wg->task, overworld_generation_exit);
-		return;
-	}
-
-	if (wg->climate->generation >= CLIMATE_GENERATIONS) {
+	if (world.climate->generation >= CLIMATE_GENERATIONS) {
 		/* Kick off stream loop */
-		wg->stream = xmalloc(sizeof(*wg->stream));
-		wg->focussed_img = wg->stream;
-		stream_graph_create(wg->stream, wg->climate, wg->world_opts.seed, wg->stream_size);
-		dltail(&wg->task, viz_stream_loop);
+		stream_graph_create(world.stream,
+		                    world.climate,
+		                    world.opts.seed,
+		                    overworld_generation.composite_size);
+		overworld_generation.current_stage = OVERWORLD_STAGE_STREAM;
+		overworld_generation.focussed_stage = OVERWORLD_STAGE_STREAM;
 		return;
 	}
 
-	if (!wg->paused) {
-		climate_update(wg->climate);
-		glthread_execute(overworld_generation_gl_blit_climate_image, wg);
+	if (!overworld_generation.paused) {
+		climate_update(world.climate);
+		glthread_execute(overworld_generation_gl_blit_climate_image, NULL);
 	}
-
-	dltail(&wg->task, viz_climate_loop);
 }
 
 static void
-viz_stream_loop(DL_TASK_ARGS)
+overworld_generation_stream_frame(void)
 {
-	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
-
-	if (glthread_execute(overworld_generation_gl_frame, wg) ||
-	    wg->cancel_btn_state == GUI_BTN_RELEASED)
-	{
-		dltail(&wg->task, overworld_generation_exit);
-		return;
-	}
-
-	if (wg->stream->generation >= STREAM_GRAPH_GENERATIONS) {
+	if (world.stream->generation >= STREAM_GRAPH_GENERATIONS) {
 		/* Kick off composite loop */
-		wg->composite = wg; /* xxx any data */
-		wg->focussed_img = wg->composite;
-		glthread_execute(overworld_generation_gl_blit_composite_image, wg);
-		dltail(&wg->task, viz_composite_loop);
+		glthread_execute(overworld_generation_gl_blit_composite_image, NULL);
+		overworld_generation.current_stage = OVERWORLD_STAGE_COMPOSITE;
+		overworld_generation.focussed_stage = OVERWORLD_STAGE_COMPOSITE;
 		return;
-	} else {
-		if (!wg->paused) {
-			stream_graph_update(wg->stream);
-			glthread_execute(overworld_generation_gl_blit_stream_image, wg);
-		}
 	}
 
-	dltail(&wg->task, viz_stream_loop);
+	if (!overworld_generation.paused) {
+		stream_graph_update(world.stream);
+		glthread_execute(overworld_generation_gl_blit_stream_image, NULL);
+	}
 }
 
 static void
-viz_composite_loop(DL_TASK_ARGS)
+overworld_generation_composite_frame(void)
 {
-	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
-
-	if (glthread_execute(overworld_generation_gl_frame, wg) ||
-	    wg->cancel_btn_state == GUI_BTN_RELEASED)
-	{
-		dltail(&wg->task, overworld_generation_exit);
-		return;
-	}
-
-	if (wg->selected_region_x != FLT_MAX &&
-	    wg->selected_region_y != FLT_MAX)
+	if (overworld_generation.selected_region_x != FLT_MAX &&
+	    overworld_generation.selected_region_y != FLT_MAX)
 	{
 		/* Kick off local region generation */
-		dltask *next = region_generation_appstate_alloc_detached(
-			wg->climate,
-			wg->lithosphere,
-			wg->stream,
-			&wg->world_opts,
-			wg->selected_region_x,
-			wg->selected_region_y,
-			STREAM_REGION_SIZE_MIN * (1 << wg->selected_region_size_mag2));
-		dlcontinuation(&wg->task, post_region_generation);
-		dlwait(&wg->task, 1);
-		dlnext(next, &wg->task);
-		dlasync(next);
+		world.region_stream_coord_left = overworld_generation.selected_region_x;
+		world.region_stream_coord_top  = overworld_generation.selected_region_y;
+		world.region_size_mag2 = overworld_generation.selected_region_size_mag2;
+		appstate_transition(APPSTATE_TRANSITION_CHOOSE_REGION);
 		return;
 	}
-
-	dltail(&wg->task, viz_composite_loop);
-}
-
-static void
-post_region_generation(DL_TASK_ARGS)
-{
-	DL_TASK_ENTRY(struct overworld_generation_appstate, wg, task);
-
-	/* TODO: Check whether we chose to cancel or conitnue with region */
-
-	wg->selected_region_x = FLT_MAX;
-	wg->selected_region_y = FLT_MAX;
-
-	dltail(&wg->task, viz_composite_loop);
 }
 
 static int
-overworld_generation_gl_setup(void *wg_)
+overworld_generation_gl_setup(void *_)
 {
-	struct overworld_generation_appstate *wg = wg_;
-
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
-	glGenTextures(1, &wg->lithosphere_img);
-	glBindTexture(GL_TEXTURE_2D, wg->lithosphere_img);
+	glGenTextures(1, &overworld_generation.lithosphere_img);
+	glBindTexture(GL_TEXTURE_2D, overworld_generation.lithosphere_img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_RGB8,
 	                            LITHOSPHERE_LEN, LITHOSPHERE_LEN,
@@ -285,15 +255,15 @@ overworld_generation_gl_setup(void *wg_)
 	                            GL_RGB,
 	                            GL_UNSIGNED_BYTE,
 	                            NULL);
-	glTextureParameteri(wg->lithosphere_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(wg->lithosphere_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(wg->lithosphere_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(wg->lithosphere_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTextureParameteri(wg->lithosphere_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glGenerateTextureMipmap(wg->lithosphere_img);
+	glTextureParameteri(overworld_generation.lithosphere_img, GL_TEXTURE_MAX_LEVEL, 0);
+	glTextureParameteri(overworld_generation.lithosphere_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTextureParameteri(overworld_generation.lithosphere_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTextureParameteri(overworld_generation.lithosphere_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTextureParameteri(overworld_generation.lithosphere_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glGenerateTextureMipmap(overworld_generation.lithosphere_img);
 
-	glGenTextures(1, &wg->climate_img);
-	glBindTexture(GL_TEXTURE_2D, wg->climate_img);
+	glGenTextures(1, &overworld_generation.climate_img);
+	glBindTexture(GL_TEXTURE_2D, overworld_generation.climate_img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_RGB8,
 	                            CLIMATE_LEN, CLIMATE_LEN,
@@ -301,69 +271,67 @@ overworld_generation_gl_setup(void *wg_)
 	                            GL_RGB,
 	                            GL_UNSIGNED_BYTE,
 	                            NULL);
-	glTextureParameteri(wg->climate_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(wg->climate_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(wg->climate_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(wg->climate_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTextureParameteri(wg->climate_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glGenerateTextureMipmap(wg->climate_img);
+	glTextureParameteri(overworld_generation.climate_img, GL_TEXTURE_MAX_LEVEL, 0);
+	glTextureParameteri(overworld_generation.climate_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTextureParameteri(overworld_generation.climate_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTextureParameteri(overworld_generation.climate_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTextureParameteri(overworld_generation.climate_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glGenerateTextureMipmap(overworld_generation.climate_img);
 
-	glGenTextures(1, &wg->stream_img);
-	glBindTexture(GL_TEXTURE_2D, wg->stream_img);
+	glGenTextures(1, &overworld_generation.stream_img);
+	glBindTexture(GL_TEXTURE_2D, overworld_generation.stream_img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_RGB8,
-	                            wg->stream_size, wg->stream_size,
+	                            overworld_generation.composite_size, overworld_generation.composite_size,
 	                            0, /* border */
 	                            GL_RGB,
 	                            GL_UNSIGNED_BYTE,
 	                            NULL);
-	glTextureParameteri(wg->stream_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(wg->stream_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(wg->stream_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(wg->stream_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTextureParameteri(wg->stream_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glGenerateTextureMipmap(wg->stream_img);
+	glTextureParameteri(overworld_generation.stream_img, GL_TEXTURE_MAX_LEVEL, 0);
+	glTextureParameteri(overworld_generation.stream_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTextureParameteri(overworld_generation.stream_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTextureParameteri(overworld_generation.stream_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTextureParameteri(overworld_generation.stream_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glGenerateTextureMipmap(overworld_generation.stream_img);
 
-	glGenTextures(1, &wg->composite_img);
-	glBindTexture(GL_TEXTURE_2D, wg->composite_img);
+	glGenTextures(1, &overworld_generation.composite_img);
+	glBindTexture(GL_TEXTURE_2D, overworld_generation.composite_img);
 	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
 	                            GL_RGB8,
-	                            wg->stream_size, wg->stream_size,
+	                            overworld_generation.composite_size, overworld_generation.composite_size,
 	                            0, /* border */
 	                            GL_RGB,
 	                            GL_UNSIGNED_BYTE,
 	                            NULL);
-	glTextureParameteri(wg->composite_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(wg->composite_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(wg->composite_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(wg->composite_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTextureParameteri(wg->composite_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glGenerateTextureMipmap(wg->composite_img);
+	glTextureParameteri(overworld_generation.composite_img, GL_TEXTURE_MAX_LEVEL, 0);
+	glTextureParameteri(overworld_generation.composite_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTextureParameteri(overworld_generation.composite_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTextureParameteri(overworld_generation.composite_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTextureParameteri(overworld_generation.composite_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glGenerateTextureMipmap(overworld_generation.composite_img);
 
 	return 0;
 }
 
 static int
-overworld_generation_gl_frame(void *wg_)
+overworld_generation_gl_frame(void *_)
 {
-	struct overworld_generation_appstate *wg = wg_;
-
-	wg->min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
+	overworld_generation.min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
 	                       (float)window.height / LITHOSPHERE_LEN);
-	wg->map_zoom = MAX(wg->min_map_zoom, wg->map_zoom);
+	overworld_generation.map_zoom = MAX(overworld_generation.min_map_zoom, overworld_generation.map_zoom);
 
 	if (window.scroll && (window.keymod & KMOD_LCTRL ||
 	                      window.keymod & KMOD_RCTRL))
 	{
-		wg->selected_region_size_mag2 =
-			CLAMP(wg->selected_region_size_mag2 - signf(window.scroll),
-			      0, MIN(wg->world_opts.scale, STREAM_REGION_SIZE_MAX_MAG2));
+		overworld_generation.selected_region_size_mag2 =
+			CLAMP(overworld_generation.selected_region_size_mag2 - signf(window.scroll),
+			      0, MIN(world.opts.scale, STREAM_REGION_SIZE_MAX_MAG2));
 	}
 	else if (window.scroll)
 	{
 		float delta = window.scroll / 10.0f;
-		if (wg->map_zoom + delta < wg->min_map_zoom)
-			delta = wg->min_map_zoom - wg->map_zoom;
+		if (overworld_generation.map_zoom + delta < overworld_generation.min_map_zoom)
+			delta = overworld_generation.min_map_zoom - overworld_generation.map_zoom;
 		/*
 		 * Holy. Actual. Hell. This took me hours for some reason.
 		 * We're trying to zoom into the center of the screen. We
@@ -376,21 +344,21 @@ overworld_generation_gl_frame(void *wg_)
 		 * We'll zoom in on the window coordinate of whatever the
 		 * center of our image space is (512?).
 		 */
-		float d = wg->map_zoom * (wg->map_zoom + delta);
+		float d = overworld_generation.map_zoom * (overworld_generation.map_zoom + delta);
 		float cropx = (window.width  * delta) / d;
 		float cropy = (window.height * delta) / d;
-		wg->map_tran_x += cropx / 2  / 1024.0f;
-		wg->map_tran_y += cropy / 2 / 1024.0f;
-		wg->map_zoom += delta;
+		overworld_generation.map_tran_x += cropx / 2  / 1024.0f;
+		overworld_generation.map_tran_y += cropy / 2 / 1024.0f;
+		overworld_generation.map_zoom += delta;
 	}
 
-	if (wg->mouse_captured) {
+	if (overworld_generation.mouse_captured) {
 		if (!window.mouse_held[MOUSEBM]) {
-			wg->mouse_captured = 0;
+			overworld_generation.mouse_captured = 0;
 			window_unlock_mouse();
 		}
-		wg->map_tran_x -= window.motion_x / (float)window.width  / wg->map_zoom;
-		wg->map_tran_y -= window.motion_y / (float)window.height / wg->map_zoom;
+		overworld_generation.map_tran_x -= window.motion_x / (float)window.width  / overworld_generation.map_zoom;
+		overworld_generation.map_tran_y -= window.motion_y / (float)window.height / overworld_generation.map_zoom;
 	}
 
 	unsigned font_size = 24;
@@ -432,29 +400,29 @@ overworld_generation_gl_frame(void *wg_)
 		.zoffset = 90, /* background */
 		.width  = window.width,
 		.height = window.height,
-		.scale_x = wg->map_zoom * (LITHOSPHERE_LEN / (float)window.width),
-		.scale_y = wg->map_zoom * (LITHOSPHERE_LEN / (float)window.height),
-		.tran_x = wg->map_tran_x,
-		.tran_y = wg->map_tran_y
+		.scale_x = overworld_generation.map_zoom * (LITHOSPHERE_LEN / (float)window.width),
+		.scale_y = overworld_generation.map_zoom * (LITHOSPHERE_LEN / (float)window.height),
+		.tran_x = overworld_generation.map_tran_x,
+		.tran_y = overworld_generation.map_tran_y
 	};
 
-	snprintf(wg->lithosphere_progress_str,
+	snprintf(overworld_generation.lithosphere_progress_str,
 	         PROGRESS_STR_MAX_LEN,
 	         "Lithosphere Generation: %ld/%ld",
-	         (long)wg->lithosphere->generation,
-	         (long)wg->tectonic_opts.generations *
-	               wg->tectonic_opts.generation_steps);
+	         (long)world.lithosphere->generation,
+	         (long)world.opts.tectonic.generations *
+	               world.opts.tectonic.generation_steps);
 
-	snprintf(wg->climate_progress_str,
+	snprintf(overworld_generation.climate_progress_str,
 	         PROGRESS_STR_MAX_LEN,
 	         "Climate Model Generation: %ld/%ld",
-	         (long)(wg->climate ? wg->climate->generation : 0),
+	         (long)(world.climate ? world.climate->generation : 0),
 	         (long)CLIMATE_GENERATIONS);
 
-	snprintf(wg->stream_progress_str,
+	snprintf(overworld_generation.stream_progress_str,
 	         PROGRESS_STR_MAX_LEN,
 	         "Stream Graph Generation: %ld/%ld",
-	         (long)(wg->stream ? wg->stream->generation : 0),
+	         (long)(world.stream ? world.stream->generation : 0),
 	         (long)STREAM_GRAPH_GENERATIONS);
 
 	gui_container stack;
@@ -472,48 +440,48 @@ overworld_generation_gl_frame(void *wg_)
 	gui_text("Scroll to zoom - Hold middle mouse to pan", small_text_opts);
 	gui_stack_break(&stack);
 	char seed_label[64];
-	snprintf(seed_label, 64, "Seed: %llu", wg->world_opts.seed);
+	snprintf(seed_label, 64, "Seed: %llu", world.opts.seed);
 	gui_text(seed_label, normal_text_opts);
 	gui_stack_break(&stack);
-	gui_text(wg->lithosphere_progress_str, normal_text_opts);
+	gui_text(overworld_generation.lithosphere_progress_str, normal_text_opts);
 	gui_stack_break(&stack);
-	gui_text(wg->climate_progress_str, normal_text_opts);
+	gui_text(overworld_generation.climate_progress_str, normal_text_opts);
 	gui_stack_break(&stack);
-	gui_text(wg->stream_progress_str, normal_text_opts);
+	gui_text(overworld_generation.stream_progress_str, normal_text_opts);
 	gui_stack_break(&stack);
-	wg->paused = gui_check(wg->paused, check_opts);
+	overworld_generation.paused = gui_check(overworld_generation.paused, check_opts);
 	gui_text(" Pause", normal_text_opts);
 	gui_stack_break(&stack);
-	wg->cancel_btn_state = gui_btn(wg->cancel_btn_state, "Cancel", btn_opts);
+	overworld_generation.cancel_btn_state = gui_btn(overworld_generation.cancel_btn_state, "Cancel", btn_opts);
 	gui_stack_break(&stack);
 
 	/*
 	 * Show the user what biome they're hovering over on the climate image.
 	 */
-	if (wg->focussed_img == wg->climate &&
+	if (overworld_generation.focussed_stage == OVERWORLD_STAGE_CLIMATE &&
 	    window.mouse_x >= 0 && window.mouse_y >= 0 &&
 	    window.mouse_x < window.width && window.mouse_y < window.height)
 	{
-		size_t imgx = window.mouse_x / wg->map_zoom + wg->map_tran_x * CLIMATE_LEN;
-		size_t imgy = window.mouse_y / wg->map_zoom + wg->map_tran_y * CLIMATE_LEN;
+		size_t imgx = window.mouse_x / overworld_generation.map_zoom + overworld_generation.map_tran_x * CLIMATE_LEN;
+		size_t imgy = window.mouse_y / overworld_generation.map_zoom + overworld_generation.map_tran_y * CLIMATE_LEN;
 		size_t i = wrapidx(imgy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(imgx, CLIMATE_LEN);
-		float temp = 1 - wg->climate->inv_temp[i];
-		float precip = wg->climate->precipitation[i];
-		float elev = wg->climate->uplift[i];
+		float temp = 1 - world.climate->inv_temp[i];
+		float precip = world.climate->precipitation[i];
+		float elev = world.climate->uplift[i];
 		enum biome b = biome_class(elev, temp, precip);
-		snprintf(wg->biome_tooltip_str,
+		snprintf(overworld_generation.biome_tooltip_str,
 		         BIOME_TOOLTIP_STR_MAX_LEN,
 		         "Hovering over: %s",
 		         biome_name[b]);
-		gui_text(wg->biome_tooltip_str, normal_text_opts);
+		gui_text(overworld_generation.biome_tooltip_str, normal_text_opts);
 		gui_stack_break(&stack);
 	}
 
 	gui_container_pop();
 
-	if (wg->focussed_img == wg->composite) {
-		gui_map(wg->composite_img, map_opts);
-	} else if (wg->composite) {
+	if (overworld_generation.focussed_stage == OVERWORLD_STAGE_COMPOSITE) {
+		gui_map(overworld_generation.composite_img, map_opts);
+	} else if (overworld_generation.current_stage == OVERWORLD_STAGE_COMPOSITE) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
 			.xoffset = window.width - border_padding - 256,
@@ -522,7 +490,7 @@ overworld_generation_gl_frame(void *wg_)
 			.height = 64,
 			.zoffset = 0.5f
 		};
-		gui_map(wg->composite_img, tab_opts);
+		gui_map(overworld_generation.composite_img, tab_opts);
 
 		if (window.unhandled_mouse_press[MOUSEBL] &&
 		    window.mouse_x >= tab_opts.xoffset &&
@@ -531,13 +499,13 @@ overworld_generation_gl_frame(void *wg_)
 		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
 		{
 			window.unhandled_mouse_press[MOUSEBL] = 0;
-			wg->focussed_img = wg->composite;
+			overworld_generation.focussed_stage = OVERWORLD_STAGE_COMPOSITE;
 		}
 	}
 
-	if (wg->focussed_img == wg->stream) {
-		gui_map(wg->stream_img, map_opts);
-	} else if (wg->stream) {
+	if (overworld_generation.focussed_stage == OVERWORLD_STAGE_STREAM) {
+		gui_map(overworld_generation.stream_img, map_opts);
+	} else if (overworld_generation.current_stage >= OVERWORLD_STAGE_STREAM) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
 			.xoffset = window.width - border_padding - 192,
@@ -546,7 +514,7 @@ overworld_generation_gl_frame(void *wg_)
 			.height = 64,
 			.zoffset = 0.5f
 		};
-		gui_map(wg->stream_img, tab_opts);
+		gui_map(overworld_generation.stream_img, tab_opts);
 
 		if (window.unhandled_mouse_press[MOUSEBL] &&
 		    window.mouse_x >= tab_opts.xoffset &&
@@ -555,13 +523,13 @@ overworld_generation_gl_frame(void *wg_)
 		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
 		{
 			window.unhandled_mouse_press[MOUSEBL] = 0;
-			wg->focussed_img = wg->stream;
+			overworld_generation.focussed_stage = OVERWORLD_STAGE_STREAM;
 		}
 	}
 
-	if (wg->focussed_img == wg->climate) {
-		gui_map(wg->climate_img, map_opts);
-	} else if (wg->climate) {
+	if (overworld_generation.focussed_stage == OVERWORLD_STAGE_CLIMATE) {
+		gui_map(overworld_generation.climate_img, map_opts);
+	} else if (overworld_generation.current_stage >= OVERWORLD_STAGE_CLIMATE) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
 			.xoffset = window.width - border_padding - 128,
@@ -570,7 +538,7 @@ overworld_generation_gl_frame(void *wg_)
 			.height = 64,
 			.zoffset = 0.5f
 		};
-		gui_map(wg->climate_img, tab_opts);
+		gui_map(overworld_generation.climate_img, tab_opts);
 
 		if (window.unhandled_mouse_press[MOUSEBL] &&
 		    window.mouse_x >= tab_opts.xoffset &&
@@ -579,13 +547,13 @@ overworld_generation_gl_frame(void *wg_)
 		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
 		{
 			window.unhandled_mouse_press[MOUSEBL] = 0;
-			wg->focussed_img = wg->climate;
+			overworld_generation.focussed_stage = OVERWORLD_STAGE_CLIMATE;
 		}
 	}
 
-	if (wg->focussed_img == wg->lithosphere) {
-		gui_map(wg->lithosphere_img, map_opts);
-	} else if (wg->lithosphere) {
+	if (overworld_generation.focussed_stage == OVERWORLD_STAGE_LITHOSPHERE) {
+		gui_map(overworld_generation.lithosphere_img, map_opts);
+	} else if (overworld_generation.current_stage >= OVERWORLD_STAGE_LITHOSPHERE) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
 			.xoffset = window.width - border_padding - 64,
@@ -594,7 +562,7 @@ overworld_generation_gl_frame(void *wg_)
 			.height = 64,
 			.zoffset = 0.5f
 		};
-		gui_map(wg->lithosphere_img, tab_opts);
+		gui_map(overworld_generation.lithosphere_img, tab_opts);
 
 		if (window.unhandled_mouse_press[MOUSEBL] &&
 		    window.mouse_x >= tab_opts.xoffset &&
@@ -603,7 +571,7 @@ overworld_generation_gl_frame(void *wg_)
 		    window.mouse_y <  tab_opts.yoffset + tab_opts.height)
 		{
 			window.unhandled_mouse_press[MOUSEBL] = 0;
-			wg->focussed_img = wg->lithosphere;
+			overworld_generation.focussed_stage = OVERWORLD_STAGE_LITHOSPHERE;
 		}
 	}
 
@@ -612,19 +580,19 @@ overworld_generation_gl_frame(void *wg_)
 	 * selection.
 	 */
 	gui_container_push(&stack);
-	if (wg->focussed_img == wg->composite && wg->composite) {
+	if (overworld_generation.focussed_stage == OVERWORLD_STAGE_COMPOSITE) {
 		gui_text("Left click to select region", normal_text_opts);
 		gui_stack_break(&stack);
 		gui_text("Ctrl+scroll to resize region", normal_text_opts);
 		gui_stack_break(&stack);
 		/* Determine the region highlighted */
-		float stream_region_hex_size = STREAM_REGION_SIZE_MIN * (1 << wg->selected_region_size_mag2);
+		float stream_region_hex_size = STREAM_REGION_SIZE_MIN * (1 << overworld_generation.selected_region_size_mag2);
 		float stream_region_hex_width = stream_region_hex_size * 2;
 		float stream_region_hex_height = stream_region_hex_size * sqrtf(3);
-		float scale = LITHOSPHERE_LEN / (float)wg->stream_size;
-		float zoom = wg->map_zoom * scale;
-		float tx = wg->map_tran_x * wg->stream_size;
-		float ty = wg->map_tran_y * wg->stream_size;
+		float scale = LITHOSPHERE_LEN / (float)overworld_generation.composite_size;
+		float zoom = overworld_generation.map_zoom * scale;
+		float tx = overworld_generation.map_tran_x * overworld_generation.composite_size;
+		float ty = overworld_generation.map_tran_y * overworld_generation.composite_size;
 		/* world coords */
 		float rl = window.mouse_x / zoom + tx - stream_region_hex_width / 2;
 		float rt = window.mouse_y / zoom + ty - stream_region_hex_height / 2;
@@ -669,8 +637,8 @@ overworld_generation_gl_frame(void *wg_)
 		gui_line(wr_left_corner, wr_bottom, 89, 1, 0xffffffff,
 		         wr_left, wr_vertical_ctr, 89, 1, 0xffffffff);
 		if (window.unhandled_mouse_press[MOUSEBL]) {
-			wg->selected_region_x = wrapidx(rl, wg->stream_size);
-			wg->selected_region_y = wrapidx(rt, wg->stream_size);
+			overworld_generation.selected_region_x = wrapidx(rl, overworld_generation.composite_size);
+			overworld_generation.selected_region_y = wrapidx(rt, overworld_generation.composite_size);
 		}
 	}
 	gui_container_pop();
@@ -678,7 +646,7 @@ overworld_generation_gl_frame(void *wg_)
 	/* Handle after UI has a chance to steal mouse event */
 	if (window.unhandled_mouse_press[MOUSEBM]) {
 		window.unhandled_mouse_press[MOUSEBM] = 0;
-		wg->mouse_captured = 1;
+		overworld_generation.mouse_captured = 1;
 		window_lock_mouse();
 	}
 
@@ -688,10 +656,9 @@ overworld_generation_gl_frame(void *wg_)
 }
 
 static int
-overworld_generation_gl_blit_lithosphere_image(void *wg_)
+overworld_generation_gl_blit_lithosphere_image(void *_)
 {
-	struct overworld_generation_appstate *wg = wg_;
-	struct lithosphere *l = wg->lithosphere;
+	struct lithosphere *l = world.lithosphere;
 	GLubyte *img = xmalloc(LITHOSPHERE_AREA * sizeof(*img) * 3);
 	/* Blue below sealevel, green to red continent altitude */
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
@@ -709,7 +676,7 @@ overworld_generation_gl_blit_lithosphere_image(void *wg_)
 			img[i*3+2] = 168;
 		}
 	}
-	glTextureSubImage2D(wg->lithosphere_img,
+	glTextureSubImage2D(overworld_generation.lithosphere_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
 	                    LITHOSPHERE_LEN, LITHOSPHERE_LEN, /* w,h */
@@ -721,10 +688,9 @@ overworld_generation_gl_blit_lithosphere_image(void *wg_)
 }
 
 static int
-overworld_generation_gl_blit_climate_image(void *wg_)
+overworld_generation_gl_blit_climate_image(void *_)
 {
-	struct overworld_generation_appstate *wg = wg_;
-	struct climate *c = wg->climate;
+	struct climate *c = world.climate;
 	GLubyte *img = xmalloc(CLIMATE_AREA * sizeof(*img) * 3);
 	for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
 		float temp = 1 - c->inv_temp[i];
@@ -734,7 +700,7 @@ overworld_generation_gl_blit_climate_image(void *wg_)
 		memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
 	}
 
-	glTextureSubImage2D(wg->climate_img,
+	glTextureSubImage2D(overworld_generation.climate_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
 	                    CLIMATE_LEN, CLIMATE_LEN, /* w,h */
@@ -800,10 +766,9 @@ swizzle(uint32_t i, GLubyte *rgb)
 }
 
 static int
-overworld_generation_gl_blit_stream_image(void *wg_)
+overworld_generation_gl_blit_stream_image(void *_)
 {
-	struct overworld_generation_appstate *wg = wg_;
-	struct stream_graph *s = wg->stream;
+	struct stream_graph *s = world.stream;
 	size_t area = s->size * s->size;
 	GLubyte *img = xcalloc(area * 3, sizeof(*img));
 
@@ -833,12 +798,12 @@ overworld_generation_gl_blit_stream_image(void *wg_)
 		GLubyte c[3];
 		swizzle(src->tree, c);
 		putline(img, s->size,
-			c[0], c[1], c[2], 1.0f,
-			srcx, srcy,
-			dstx, dsty);
+		        c[0], c[1], c[2], 1.0f,
+		        srcx, srcy,
+		        dstx, dsty);
 	}
 
-	glTextureSubImage2D(wg->stream_img,
+	glTextureSubImage2D(overworld_generation.stream_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
 	                    s->size, s->size, /* w,h */
@@ -850,10 +815,9 @@ overworld_generation_gl_blit_stream_image(void *wg_)
 }
 
 static int
-overworld_generation_gl_blit_composite_image(void *wg_)
+overworld_generation_gl_blit_composite_image(void *_)
 {
-	struct overworld_generation_appstate *wg = wg_;
-	struct stream_graph *s = wg->stream;
+	struct stream_graph *s = world.stream;
 	GLubyte *img = xcalloc(s->size * s->size * 3, sizeof(*img));
 
 	/*
@@ -861,7 +825,7 @@ overworld_generation_gl_blit_composite_image(void *wg_)
 	 * in worldgen/region.c
 	 */
 	size_t tri_count = vector_size(s->tris);
-	const float cs = wg->stream_size / CLIMATE_LEN;
+	const float cs = overworld_generation.composite_size / CLIMATE_LEN;
 	for (size_t ti = 0; ti < tri_count; ++ ti) {
 		struct stream_tri *tri = &s->tris[ti];
 		struct stream_node n[3] = {
@@ -911,8 +875,8 @@ overworld_generation_gl_blit_composite_image(void *wg_)
 			if (w[0] < 0 || w[1] < 0 || w[2] < 0)
 				continue;
 			size_t i = wy * s->size + wx;
-			float temp = 1 - lerp_climate_layer(wg->climate->inv_temp, wx, wy, cs);
-			float precip = lerp_climate_layer(wg->climate->precipitation, wx, wy, cs);
+			float temp = 1 - lerp_climate_layer(world.climate->inv_temp, wx, wy, cs);
+			float precip = lerp_climate_layer(world.climate->precipitation, wx, wy, cs);
 			float elev = n[0].height * w[0] + n[1].height * w[1] + n[2].height * w[2];
 			enum biome b = biome_class(elev, temp, precip);
 			if (elev < max_lake)
@@ -987,15 +951,15 @@ overworld_generation_gl_blit_composite_image(void *wg_)
 		else if (wrapy && dsty < srcy)
 			dsty += s->size;
 		putline(img, s->size,
-			biome_color[BIOME_OCEAN][0],
-			biome_color[BIOME_OCEAN][1],
-			biome_color[BIOME_OCEAN][2],
-			CLAMP(src->drainage / 10000.0f, 0, 1),
-			srcx, srcy,
-			dstx, dsty);
+		        biome_color[BIOME_OCEAN][0],
+		        biome_color[BIOME_OCEAN][1],
+		        biome_color[BIOME_OCEAN][2],
+		        CLAMP(src->drainage / 10000.0f, 0, 1),
+		        srcx, srcy,
+		        dstx, dsty);
 	}
 
-	glTextureSubImage2D(wg->composite_img,
+	glTextureSubImage2D(overworld_generation.composite_img,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
 	                    s->size, s->size, /* w,h */

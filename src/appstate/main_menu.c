@@ -1,99 +1,72 @@
-#include "hammer/appstate/main_menu.h"
-#include "hammer/appstate/world_config.h"
-#include "hammer/cli.h"
+#include "hammer/appstate.h"
 #include "hammer/glthread.h"
 #include "hammer/gui.h"
-#include "hammer/mem.h"
 #include "hammer/version.h"
 #include "hammer/window.h"
 
 #define VERSION_STR_MAX_LEN 128
 
-struct main_menu_appstate {
-	dltask task;
+dltask appstate_main_menu_frame;
+
+static struct {
 	gui_btn_state exit_btn_state;
 	gui_btn_state generate_new_world_btn_state;
 	char version_str[VERSION_STR_MAX_LEN];
-};
+} main_menu;
 
-static void main_menu_entry(DL_TASK_ARGS);
-static void main_menu_exit (DL_TASK_ARGS);
-static void main_menu_loop (DL_TASK_ARGS);
+static void main_menu_frame_async(DL_TASK_ARGS);
+static int  main_menu_gl_setup(void *);
+static int  main_menu_gl_frame(void *);
 
-static int main_menu_gl_setup(void *);
-static int main_menu_gl_frame(void *);
-
-dltask *
-main_menu_appstate_alloc_detached(void)
+void
+appstate_main_menu_setup(void)
 {
-	struct main_menu_appstate *main_menu = xmalloc(sizeof(*main_menu));
-	main_menu->task = DL_TASK_INIT(main_menu_entry);
-	return &main_menu->task;
-}
+	appstate_main_menu_frame = DL_TASK_INIT(main_menu_frame_async);
 
-static void
-main_menu_entry(DL_TASK_ARGS)
-{
-	DL_TASK_ENTRY(struct main_menu_appstate, main_menu, task);
-
-	glthread_execute(main_menu_gl_setup, main_menu);
-	snprintf(main_menu->version_str, VERSION_STR_MAX_LEN,
+	glthread_execute(main_menu_gl_setup, NULL);
+	snprintf(main_menu.version_str, VERSION_STR_MAX_LEN,
 	         "v%d.%d.%d %d by Rain Therrien, https://github.com/raintherrien/hammer",
 	         HAMMER_VERSION_MAJOR, HAMMER_VERSION_MINOR, HAMMER_VERSION_PATCH,
 	         build_date_code());
-	main_menu->exit_btn_state = 0;
-	main_menu->generate_new_world_btn_state = 0;
+	main_menu.exit_btn_state = 0;
+	main_menu.generate_new_world_btn_state = 0;
+}
 
-	dltail(&main_menu->task, main_menu_loop);
+void
+appstate_main_menu_teardown(void)
+{
+	/* Nothing to free */
 }
 
 static void
-main_menu_exit(DL_TASK_ARGS)
+main_menu_frame_async(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct main_menu_appstate, main_menu, task);
-	free(main_menu);
-	dlterminate();
-}
+	DL_TASK_ENTRY_VOID;
 
-static void
-main_menu_loop(DL_TASK_ARGS)
-{
-	DL_TASK_ENTRY(struct main_menu_appstate, main_menu, task);
-
-	if (glthread_execute(main_menu_gl_frame, main_menu) ||
-	    main_menu->exit_btn_state == GUI_BTN_RELEASED)
+	if (glthread_execute(main_menu_gl_frame, NULL) ||
+	    main_menu.exit_btn_state == GUI_BTN_RELEASED)
 	{
-		dltail(&main_menu->task, main_menu_exit);
+		appstate_transition(APPSTATE_TRANSITION_CLOSE_MAIN_MENU);
 		return;
 	}
 
-	if (main_menu->generate_new_world_btn_state == GUI_BTN_RELEASED) {
-		dltask *next = world_config_appstate_alloc_detached();
-		dlcontinuation(&main_menu->task, main_menu_entry);
-		dlwait(&main_menu->task, 1);
-		dlnext(next, &main_menu->task);
-		dlasync(next);
+	if (main_menu.generate_new_world_btn_state == GUI_BTN_RELEASED) {
+		appstate_transition(APPSTATE_TRANSITION_CONFIGURE_NEW_WORLD);
 		return;
 	}
-
-	dltail(&main_menu->task, main_menu_loop);
 }
 
 static int
-main_menu_gl_setup(void *main_menu)
+main_menu_gl_setup(void *_)
 {
-	(void) main_menu;
-
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
 	return 0;
 }
 
 static int
-main_menu_gl_frame(void *main_menu_)
+main_menu_gl_frame(void *_)
 {
-	struct main_menu_appstate *main_menu = main_menu_;
-
 	unsigned btn_height = 48;
 	unsigned btn_font_size = btn_height - 16;
 
@@ -140,9 +113,9 @@ main_menu_gl_frame(void *main_menu_)
 
 	gui_text_center("Hammer", window.width, title_opts);
 	gui_text_center("A collection of bad practices and anti-patterns", window.width, subtitle_opts);
-	gui_text_center(main_menu->version_str, window.width, version_str_opts);
-	main_menu->generate_new_world_btn_state = gui_btn(main_menu->generate_new_world_btn_state, "Generate new world!", generate_new_world_btn_opts);
-	main_menu->exit_btn_state = gui_btn(main_menu->exit_btn_state, "Exit", exit_btn_opts);
+	gui_text_center(main_menu.version_str, window.width, version_str_opts);
+	main_menu.generate_new_world_btn_state = gui_btn(main_menu.generate_new_world_btn_state, "Generate new world!", generate_new_world_btn_opts);
+	main_menu.exit_btn_state = gui_btn(main_menu.exit_btn_state, "Exit", exit_btn_opts);
 
 	window_submitframe();
 
