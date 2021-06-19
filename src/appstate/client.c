@@ -94,5 +94,6 @@ client_gl_frame(void *_)
 		//XXX draw mesh
 	}
 
+	window_submitframe();
 	return window.should_close;
 }

@@ -6,11 +6,14 @@
 
 #define MAP3_NIL_HASH UINT64_MAX
 
+/* typedef for passing a compound literal key like (map3_key) { i, j, k } */
+typedef int map3_key[3];
+
 struct map3_entry {
 	void *data;
 	uint64_t hash;
 	size_t probe_length;
-	int x, y, z;
+	map3_key key;
 };
 
 struct map3 {
@@ -22,9 +25,9 @@ struct map3 {
 void map3_create(struct map3 *);
 void map3_destroy(struct map3 *);
 
-void map3_del(struct map3 *, int x, int y, int z);
-void map3_get(struct map3 *, int x, int y, int z, void **);
-void map3_put(struct map3 *, int x, int y, int z, void *);
+void map3_del(struct map3 *, map3_key key);
+void map3_get(struct map3 *, map3_key key, void **);
+void map3_put(struct map3 *, map3_key key, void *);
 
 /*
  * map3_isvalid() may be used to iterate over map3::entries directly. For

@@ -4,20 +4,20 @@
 #define MAP3_RESIZE_RATIO 0.9f
 #define MAP3_INIT_SIZE 128
 
-static uint64_t map3_hash(int x, int y, int z);
-static int      map3_eq(const struct map3_entry *, uint64_t, int, int, int);
+static uint64_t map3_hash(map3_key key);
+static int      map3_eq(const struct map3_entry *, uint64_t, map3_key);
 static void     map3_resize(struct map3 *);
 static void     map3_put_impl(struct map3 *, struct map3_entry);
 
 static uint64_t
-map3_hash(int x, int y, int z)
+map3_hash(map3_key key)
 {
 	/* For better or worse I'm using a 64-bit Fowler-Noll-Vo hash */
 	const uint64_t prime = 1099511628211u;
 	uint64_t hash  = 14695981039346656037u;
-	const char *x_ = (const char *)&x;
-	const char *y_ = (const char *)&y;
-	const char *z_ = (const char *)&z;
+	const char *x_ = (const char *)&key[0];
+	const char *y_ = (const char *)&key[1];
+	const char *z_ = (const char *)&key[2];
 	for (size_t i = 0; i < sizeof(int); ++ i) {
 		hash ^= *x_ ++;
 		hash *= prime;
@@ -30,9 +30,12 @@ map3_hash(int x, int y, int z)
 }
 
 static int
-map3_eq(const struct map3_entry *e, uint64_t hash, int x, int y, int z)
+map3_eq(const struct map3_entry *e, uint64_t hash, map3_key key)
 {
-	return e->hash == hash && e->x == x && e->y == y && e->z == z;
+	return e->hash == hash &&
+	       e->key[0] == key[0] &&
+	       e->key[1] == key[1] &&
+	       e->key[2] == key[2];
 }
 
 static void
@@ -72,7 +75,7 @@ manual_tailcall: ;
 	 */
 	while (candidate->probe_length > probe_length ||
 	       ( candidate->probe_length == probe_length &&
-	         !map3_eq(candidate, e.hash, e.x, e.y, e.z) ))
+	         !map3_eq(candidate, e.hash, e.key) ))
 	{
 		++ probe_length;
 		candidate = &m->entries[(index + probe_length) & size_mask];
@@ -82,7 +85,7 @@ manual_tailcall: ;
 	struct map3_entry richer = m->entries[(index + probe_length) & size_mask];
 	m->entries[(index + probe_length) & size_mask] = e;
 	if (richer.hash != MAP3_NIL_HASH &&
-	    !map3_eq(&richer, e.hash, e.x, e.y, e.z))
+	    !map3_eq(&richer, e.hash, e.key))
 	{
 		e = richer;
 		goto manual_tailcall;
@@ -123,16 +126,16 @@ map3_destroy(struct map3 *m)
 }
 
 void
-map3_del(struct map3 *m, int x, int y, int z)
+map3_del(struct map3 *m, map3_key key)
 {
 	const size_t size_mask = m->entries_size - 1;
-	const uint64_t hash = map3_hash(x, y, z);
+	const uint64_t hash = map3_hash(key);
 	const size_t index = hash & size_mask;
 	size_t probe_length = 0;
 	struct map3_entry *e = &m->entries[index];
 	/* Silently ignore attempts to delete non-existant */
 	do {
-		if (map3_eq(e, hash, x, y, z)) {
+		if (map3_eq(e, hash, key)) {
 			-- m->entry_count;
 			e->hash = MAP3_NIL_HASH;
 			map3_backshift(m, (index + probe_length) & size_mask);
@@ -144,15 +147,15 @@ map3_del(struct map3 *m, int x, int y, int z)
 }
 
 void
-map3_get(struct map3 *m, int x, int y, int z, void **d)
+map3_get(struct map3 *m, map3_key key, void **d)
 {
 	const size_t size_mask = m->entries_size - 1;
-	const uint64_t hash = map3_hash(x, y, z);
+	const uint64_t hash = map3_hash(key);
 	const size_t index = hash & size_mask;
 	size_t probe_length = 0;
 	struct map3_entry *e = &m->entries[index];
 	do {
-		if (map3_eq(e, hash, x, y, z)) {
+		if (map3_eq(e, hash, key)) {
 			*d = e->data;
 			return;
 		}
@@ -164,14 +167,14 @@ map3_get(struct map3 *m, int x, int y, int z, void **d)
 }
 
 void
-map3_put(struct map3 *m, int x, int y, int z, void *d)
+map3_put(struct map3 *m, map3_key key, void *d)
 {
 	if (++ m->entry_count > MAP3_RESIZE_RATIO * m->entries_size)
 		map3_resize(m);
 
 	map3_put_impl(m, (struct map3_entry) {
 		.data = d,
-		.hash = map3_hash(x, y, z),
-		.x = x, .y = y, .z = z
+		.hash = map3_hash(key),
+		.key = { key[0], key[1], key[2] }
 	});
 }

@@ -10,6 +10,12 @@
 #include <cglm/affine.h>
 #include <cglm/cam.h>
 
+/*
+ * TODO: Allow the user to select an exact embark location by left clicking
+ * the region and raycasting into the terrain. Put a red inverted pyramid
+ * there and make that the center of the camera's focus
+ */
+
 dltask appstate_server_region_gen_frame;
 
 enum {
