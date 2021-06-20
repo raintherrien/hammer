@@ -6,10 +6,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CHUNK_LEN 32
-#define CHUNK_VOL (CHUNK_LEN * CHUNK_LEN * CHUNK_LEN)
-_Static_assert(CHUNK_VOL < (size_t)INT_MAX);
-
 /*
  * A chunk is a multi-layer rhombus of blocks with a fixed size along each
  * four dimensions (q,r,s,y).
@@ -19,6 +15,11 @@ _Static_assert(CHUNK_VOL < (size_t)INT_MAX);
  *   r is the row, each of which is shifted +w/2 forming the rhombus shape
  *   q is the cell within the row
  */
+
+#define CHUNK_LEN 32
+#define CHUNK_VOL (CHUNK_LEN * CHUNK_LEN * CHUNK_LEN)
+_Static_assert(CHUNK_VOL < (size_t)INT_MAX);
+
 struct chunk {
 	enum block blocks[CHUNK_VOL];
 };

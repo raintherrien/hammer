@@ -1,6 +1,15 @@
 #ifndef HAMMER_WORLD_BLOCK_H_
 #define HAMMER_WORLD_BLOCK_H_
 
+/*
+ * Refer to hammer/hexagon.h for an explanation of pointy hexagon block
+ * dimensions.
+ */
+
+#define BLOCK_HEX_SIZE   (0.5f) /* length of hexagon size */
+#define BLOCK_EUC_HEIGHT (1.0f) /* dimensions of hexagon on Euclidean plane */
+#define BLOCK_EUC_WIDTH  (0.86602540378f) /* sqrtf(3) * BLOCK_HEX_SIZE */
+
 enum block {
 	BLOCK_UNKNOWN = 0,
 	BLOCK_AIR = 1,

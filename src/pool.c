@@ -1,5 +1,6 @@
 #include "hammer/pool.h"
 #include "hammer/mem.h"
+#include <math.h>
 
 static void
 pool_grow(struct pool *p)
@@ -10,7 +11,7 @@ pool_grow(struct pool *p)
 	/* Freelist should be empty. Fill with this page. */
 	p->freehead = p->pages[np];
 	void **next = (void **)p->freehead;
-	for (size_t i = 1; i+1 < POOL_PAGE_SIZE; ++ i) {
+	for (size_t i = 1; i < POOL_PAGE_SIZE-1; ++ i) {
 		*next = (char *)p->pages[np] + i*p->structsize;
 		next = (void **)*next;
 	}
@@ -21,11 +22,12 @@ void
 pool_create(struct pool *p, size_t structsize)
 {
 	/* Ensure we can alias our linked list */
-	if (structsize < sizeof(void *))
-		structsize = sizeof(void *);
+	const size_t align = sizeof(void *);
+	structsize = ceilf(structsize / (float)align) * align;
 
 	/* Allocate initial page */
 	p->pages = NULL;
+	p->freehead = NULL;
 	p->structsize = structsize;
 	p->pages_count = 0;
 	pool_grow(p);

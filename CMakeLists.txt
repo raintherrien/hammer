@@ -38,6 +38,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/client.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/server_config.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/server_planet_gen.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/server_region_gen.c
+                   ${PROJECT_SOURCE_DIR}/src/client/chunkmesh.c
                    ${PROJECT_SOURCE_DIR}/src/gui/interaction.c
                    ${PROJECT_SOURCE_DIR}/src/gui/line.c
                    ${PROJECT_SOURCE_DIR}/src/gui/map.c
