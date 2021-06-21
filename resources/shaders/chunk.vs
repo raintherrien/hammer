@@ -6,7 +6,7 @@ layout(location=0) out float fs_light;
 
 uniform mat4 mvp;
 
-const vec3 light = normalize(vec3(1, -1, 1));
+const vec3 light = normalize(vec3(1, 1, 1));
 
 void main()
 {

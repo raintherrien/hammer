@@ -1,6 +1,7 @@
 #include "hammer/client/chunkmesh.h"
 #include "hammer/error.h"
 #include "hammer/glsl.h"
+#include "hammer/hexagon.h"
 #include "hammer/mem.h"
 #include "hammer/world/chunk.h"
 #include <string.h>
@@ -15,109 +16,109 @@ struct blockvertex {
 const float diagN = 0.866f; /* sqrtf(3) / 2 or sinf(60 degrees)*/
 static const struct blockvertex hex_tris[20][3] = {
 	{
-		{ { -1, 0, 0 }, { -diagN, 0, -0.5f } },
-		{ { -1, 1, 0 }, { -diagN, 0, -0.5f } },
-		{ { -0.5f, 0, -diagN }, { -diagN, 0, -0.5f } },
+		{ { 0, 0, -1 }, { -diagN, 0, -0.5f } },
+		{ { -diagN, 0, -0.5f }, { -diagN, 0, -0.5f } },
+		{ { 0, 1, -1 }, { -diagN, 0, -0.5f } },
 	},
 	{
-		{ { -0.5f, 1, -diagN }, { 0, 0, -1 } },
-		{ { 0.5f, 0, -diagN }, { 0, 0, -1 } },
-		{ { -0.5f, 0, -diagN }, { 0, 0, -1 } },
+		{ { -diagN, 1, -0.5f }, { 0, 0, -1 } },
+		{ { -diagN, 0, -0.5f }, { 0, 0, -1 } },
+		{ { -diagN, 0, 0.5f }, { 0, 0, -1 } },
 	},
 	{
-		{ { 0.5f, 1, -diagN }, { diagN, 0, -0.5f } },
-		{ { 1, 0, 0 }, { diagN, 0, -0.5f } },
-		{ { 0.5f, 0, -diagN }, { diagN, 0, -0.5f } },
+		{ { -diagN, 1, 0.5f }, { diagN, 0, -0.5f } },
+		{ { -diagN, 0, 0.5f }, { diagN, 0, -0.5f } },
+		{ { 0, 0, 1 }, { diagN, 0, -0.5f } },
 	},
 	{
-		{ { 1, 1, 0 }, { diagN, 0, 0.5f } },
-		{ { 0.5f, 0, diagN }, { diagN, 0, 0.5f } },
-		{ { 1, 0, 0 }, { diagN, 0, 0.5f } },
+		{ { 0, 1, 1 }, { diagN, 0, 0.5f } },
+		{ { 0, 0, 1 }, { diagN, 0, 0.5f } },
+		{ { diagN, 0, 0.5f }, { diagN, 0, 0.5f } },
 	},
 	{
-		{ { -1, 1, 0 }, { 0, 1, 0 } },
-		{ { 0.5f, 1, diagN }, { 0, 1, 0 } },
-		{ { 0.5f, 1, -diagN }, { 0, 1, 0 } },
+		{ { 0, 1, -1 }, { 0, 1, 0 } },
+		{ { -diagN, 1, 0.5f }, { 0, 1, 0 } },
+		{ { diagN, 1, 0.5f }, { 0, 1, 0 } },
 	},
 	{
-		{ { 0.5f, 1, diagN }, { 0, 0, 1 } },
-		{ { -0.5f, 0, diagN }, { 0, 0, 1 } },
-		{ { 0.5f, 0, diagN }, { 0, 0, 1 } },
+		{ { diagN, 1, 0.5f }, { 0, 0, 1 } },
+		{ { diagN, 0, 0.5f }, { 0, 0, 1 } },
+		{ { diagN, 0, -0.5f }, { 0, 0, 1 } },
 	},
 	{
-		{ { -0.5f, 1, diagN }, { -diagN, 0, 0.5f } },
-		{ { -1, 0, 0 }, { -diagN, 0, 0.5f } },
-		{ { -0.5f, 0, diagN }, { -diagN, 0, 0.5f } },
+		{ { diagN, 1, -0.5f }, { -diagN, 0, 0.5f } },
+		{ { diagN, 0, -0.5f }, { -diagN, 0, 0.5f } },
+		{ { 0, 0, -1 }, { -diagN, 0, 0.5f } },
 	},
 	{
-		{ { 0.5f, 0, diagN }, { 0, -1, 0 } },
-		{ { -0.5f, 0, diagN }, { 0, -1, 0 } },
-		{ { -0.5f, 0, -diagN }, { 0, -1, 0 } },
+		{ { diagN, 0, 0.5f }, { 0, -1, 0 } },
+		{ { -diagN, 0, -0.5f }, { 0, -1, 0 } },
+		{ { diagN, 0, -0.5f }, { 0, -1, 0 } },
 	},
 	{
-		{ { -1, 1, 0 }, { -diagN, 0, -0.5f } },
-		{ { -0.5f, 1, -diagN }, { -diagN, 0, -0.5f } },
-		{ { -0.5f, 0, -diagN }, { -diagN, 0, -0.5f } },
+		{ { 0, 1, -1 }, { -diagN, 0, -0.5f } },
+		{ { -diagN, 0, -0.5f }, { -diagN, 0, -0.5f } },
+		{ { -diagN, 1, -0.5f }, { -diagN, 0, -0.5f } },
 	},
 	{
-		{ { -0.5f, 1, -diagN }, { 0, 0, -1 } },
-		{ { 0.5f, 1, -diagN }, { 0, 0, -1 } },
-		{ { 0.5f, 0, -diagN }, { 0, 0, -1 } },
+		{ { -diagN, 1, -0.5f }, { 0, 0, -1 } },
+		{ { -diagN, 0, 0.5f }, { 0, 0, -1 } },
+		{ { -diagN, 1, 0.5f }, { 0, 0, -1 } },
 	},
 	{
-		{ { 0.5f, 1, -diagN }, { diagN, 0, -0.5f } },
-		{ { 1, 1, 0 }, { diagN, 0, -0.5f } },
-		{ { 1, 0, 0 }, { diagN, 0, -0.5f } },
+		{ { -diagN, 1, 0.5f }, { diagN, 0, -0.5f } },
+		{ { 0, 0, 1 }, { diagN, 0, -0.5f } },
+		{ { 0, 1, 1 }, { diagN, 0, -0.5f } },
 	},
 	{
-		{ { 1, 1, 0 }, { diagN, 0, 0.5f } },
-		{ { 0.5f, 1, diagN }, { diagN, 0, 0.5f } },
-		{ { 0.5f, 0, diagN }, { diagN, 0, 0.5f } },
+		{ { 0, 1, 1 }, { diagN, 0, 0.5f } },
+		{ { diagN, 0, 0.5f }, { diagN, 0, 0.5f } },
+		{ { diagN, 1, 0.5f }, { diagN, 0, 0.5f } },
 	},
 	{
-		{ { 0.5f, 1, -diagN }, { 0, 1, 0 } },
-		{ { -0.5f, 1, -diagN }, { 0, 1, 0 } },
-		{ { -1, 1, 0 }, { 0, 1, 0 } },
+		{ { -diagN, 1, 0.5f }, { 0, 1, 0 } },
+		{ { 0, 1, -1 }, { 0, 1, 0 } },
+		{ { -diagN, 1, -0.5f }, { 0, 1, 0 } },
 	},
 	{
-		{ { -1, 1, 0 }, { 0, 1, 0 } },
-		{ { -0.5f, 1, diagN }, { 0, 1, 0 } },
-		{ { 0.5f, 1, diagN }, { 0, 1, 0 } },
+		{ { 0, 1, -1 }, { 0, 1, 0 } },
+		{ { diagN, 1, 0.5f }, { 0, 1, 0 } },
+		{ { diagN, 1, -0.5f }, { 0, 1, 0 } },
 	},
 	{
-		{ { 0.5f, 1, diagN }, { 0, 1, 0 } },
-		{ { 1, 1, 0 }, { 0, 1, 0 } },
-		{ { 0.5f, 1, -diagN }, { 0, 1, 0 } },
+		{ { diagN, 1, 0.5f }, { 0, 1, 0 } },
+		{ { -diagN, 1, 0.5f }, { 0, 1, 0 } },
+		{ { 0, 1, 1 }, { 0, 1, 0 } },
 	},
 	{
-		{ { 0.5f, 1, diagN }, { 0, 0, 1 } },
-		{ { -0.5f, 1, diagN }, { 0, 0, 1 } },
-		{ { -0.5f, 0, diagN }, { 0, 0, 1 } },
+		{ { diagN, 1, 0.5f }, { 0, 0, 1 } },
+		{ { diagN, 0, -0.5f }, { 0, 0, 1 } },
+		{ { diagN, 1, -0.5f }, { 0, 0, 1 } },
 	},
 	{
-		{ { -0.5f, 1, diagN }, { -diagN, 0, 0.5f } },
-		{ { -1, 1, 0 }, { -diagN, 0, 0.5f } },
-		{ { -1, 0, 0 }, { -diagN, 0, 0.5f } },
+		{ { diagN, 1, -0.5f }, { -diagN, 0, 0.5f } },
+		{ { 0, 0, -1 }, { -diagN, 0, 0.5f } },
+		{ { 0, 1, -1 }, { -diagN, 0, 0.5f } },
 	},
 	{
-		{ { -0.5f, 0, diagN }, { 0, -1, 0 } },
-		{ { -1, 0, 0 }, { 0, -1, 0 } },
-		{ { -0.5f, 0, -diagN }, { 0, -1, 0 } },
+		{ { diagN, 0, -0.5f }, { 0, -1, 0 } },
+		{ { -diagN, 0, -0.5f }, { 0, -1, 0 } },
+		{ { 0, 0, -1 }, { 0, -1, 0 } },
 	},
 	{
-		{ { -0.5f, 0, -diagN }, { 0, -1, 0 } },
-		{ { 0.5f, 0, -diagN }, { 0, -1, 0 } },
-		{ { 1, 0, 0 }, { 0, -1, 0 } },
+		{ { -diagN, 0, -0.5f }, { 0, -1, 0 } },
+		{ { 0, 0, 1 }, { 0, -1, 0 } },
+		{ { -diagN, 0, 0.5f }, { 0, -1, 0 } },
 	},
 	{
-		{ { 1, 0, 0 }, { 0, -1, 0 } },
-		{ { 0.5f, 0, diagN }, { 0, -1, 0 } },
-		{ { -0.5f, 0, -diagN }, { 0, -1, 0 } },
+		{ { 0, 0, 1 }, { 0, -1, 0 } },
+		{ { -diagN, 0, -0.5f }, { 0, -1, 0 } },
+		{ { diagN, 0, 0.5f }, { 0, -1, 0 } },
 	},
 };
 
 void
-chunkmesh_gl_create(struct chunkmesh *m, const struct chunk *c)
+chunkmesh_gl_create(struct chunkmesh *m, const struct chunk *c, int cy, int cr, int cq)
 {
 	const size_t n = 20 * 3;
 	struct blockvertex *vs = xmalloc(CHUNK_VOL * n * sizeof(*vs));
@@ -129,9 +130,18 @@ chunkmesh_gl_create(struct chunkmesh *m, const struct chunk *c)
 		if (!is_block_opaque(chunk_block_at(c, y, r, q)))
 			continue;
 
-		/* XXX yrq to xyz and offset verts */
-		memcpy(vs + m->vc, hex_tris, sizeof(*vs) * n);
-		m->vc += n;
+		/* XXX Very easy occluded face cull */
+		for (int fi = 0; fi < 20; ++ fi)
+		for (int vi = 0; vi <  3; ++ vi) {
+			struct blockvertex v = hex_tris[fi][vi];
+			float yy = y + cy * CHUNK_LEN;
+			float rr = r + cr * CHUNK_LEN;
+			float qq = q + cq * CHUNK_LEN;
+			v.position[0] = v.position[0] * BLOCK_HEX_SIZE + BLOCK_EUC_WIDTH * (qq + rr / 2);
+			v.position[1] = v.position[1] * BLOCK_HEX_SIZE + yy;
+			v.position[2] = v.position[2] * BLOCK_HEX_SIZE + rr * 0.75f * BLOCK_EUC_HEIGHT;
+			vs[m->vc ++] = v;
+		}
 	}
 
 	glGenVertexArrays(1, &m->vao);

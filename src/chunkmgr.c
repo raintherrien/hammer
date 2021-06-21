@@ -30,8 +30,8 @@ chunkmgr_create_at(struct chunkmgr *mgr, int cy, int cr, int cq)
 	for (int y = 0; y < CHUNK_LEN; ++ y)
 	for (int r = 0; r < CHUNK_LEN; ++ r)
 	for (int q = 0; q < CHUNK_LEN; ++ q) {
-		if (rand() > RAND_MAX / 2)
-			*chunk_block_at_ptr(c, y, r, q) = BLOCK_STONE;
+		enum block b = rand() > RAND_MAX / 2 ? BLOCK_STONE : BLOCK_AIR;
+		*chunk_block_at_ptr(c, y, r, q) = b;
 	}
 	map3_put(&mgr->chunk_map, (map3_key) { cy, cr, cq }, c);
 	return c;

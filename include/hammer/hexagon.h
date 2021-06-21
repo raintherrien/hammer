@@ -3,6 +3,8 @@
 
 #include <math.h>
 
+#define HEX_SQRT3 (1.73205080757f)
+
 /*
  * Hexagonal Grids from Red Blob Games
  * https://www.redblobgames.com/grids/hexagons/
@@ -43,15 +45,25 @@
  * which can be found in the comments section of the article above
  */
 static inline void
-hex_pixel_to_axial(float hex_width, float hex_size,
+hex_pixel_to_axial(float hex_size,
                    float pixel_x, float pixel_z,
                    float *axial_q, float *axial_r)
 {
+	float hex_width = HEX_SQRT3 * hex_size;
 	pixel_x = (pixel_x - hex_width / 2) / hex_width;
 	float t1 = pixel_z / hex_size;
 	float t2 = floorf(pixel_x + t1);
 	*axial_r = floorf((floorf(t1 - pixel_x) + t2) / 3);
 	*axial_q = floorf((floorf(2 * pixel_x + 1) + t2) / 3) - *axial_r;
+}
+
+static inline void
+hex_axial_to_pixel(float hex_size,
+                   float axial_q, float axial_r,
+                   float *pixel_x, float *pixel_z)
+{
+	*pixel_x = hex_size * (HEX_SQRT3 * axial_q + HEX_SQRT3 / 2 * axial_r);
+	*pixel_z = hex_size * (                               1.5f * axial_r);
 }
 
 #endif /* HAMMER_HEXAGON_H_ */

@@ -161,8 +161,7 @@ region_generation_gl_create(void *_)
 		 * selected.
 		 */
 		float xxxoffset = (renderer->render_size - approx_region_hex_size * sqrtf(3)) / 2;
-		hex_pixel_to_axial(approx_cell_hex_size * sqrtf(3),
-		                   approx_cell_hex_size,
+		hex_pixel_to_axial(approx_cell_hex_size,
 		                   x - renderer->render_size / 2.0f,
 		                   y - renderer->render_size / 2.0f + xxxoffset,
 		                   &q, &r);

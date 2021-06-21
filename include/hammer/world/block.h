@@ -6,9 +6,9 @@
  * dimensions.
  */
 
-#define BLOCK_HEX_SIZE   (0.5f) /* length of hexagon size */
-#define BLOCK_EUC_HEIGHT (1.0f) /* dimensions of hexagon on Euclidean plane */
-#define BLOCK_EUC_WIDTH  (0.86602540378f) /* sqrtf(3) * BLOCK_HEX_SIZE */
+#define BLOCK_HEX_SIZE   (1.0f) /* length of hexagon size */
+#define BLOCK_EUC_HEIGHT (2.0f) /* dimensions of hexagon on Euclidean plane */
+#define BLOCK_EUC_WIDTH  (1.73205f) /* sqrtf(3) * BLOCK_HEX_SIZE */
 
 enum block {
 	BLOCK_UNKNOWN = 0,

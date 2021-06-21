@@ -11,7 +11,7 @@ struct chunkmesh {
 	GLuint  vbo;
 };
 
-void chunkmesh_gl_create(struct chunkmesh *, const struct chunk *);
+void chunkmesh_gl_create(struct chunkmesh *, const struct chunk *, int cy, int cr, int cq);
 void chunkmesh_gl_destroy(struct chunkmesh *);
 
 struct chunkmesh_renderer {

@@ -6,6 +6,7 @@
 #include "hammer/server.h"
 #include "hammer/window.h"
 #include <cglm/cam.h>
+#include <cglm/euler.h>
 #include <stdio.h> // xxx
 
 // xxx shouldn't reference server
@@ -16,8 +17,12 @@ static struct {
 	struct chunkmgr chunkmgr;
 	struct map3 chunkmesh_map;
 	struct pool chunkmesh_pool;
-	float yaw;
-	float pitch;
+	struct {
+		vec3 position;
+		vec3 rotation;
+		vec3 forward;
+		vec3 right;
+	} camera;
 } client;
 
 static void client_frame_async(DL_TASK_ARGS);
@@ -32,18 +37,16 @@ appstate_client_setup(void)
 	map3_create(&client.chunkmesh_map);
 	pool_create(&client.chunkmesh_pool, sizeof(struct chunkmesh));
 
-	client.yaw = -M_PI / 2;
-	client.pitch = -FLT_EPSILON;
+	glm_vec3_zero(client.camera.position);
+	glm_vec3_zero(client.camera.rotation);
+	glm_vec3_zero(client.camera.forward);
+	glm_vec3_zero(client.camera.right);
 
 	/* XXX Generate some chunks */
 	const int chunks = 2;//(int)client.chunkmgr.region->rect_size / CHUNK_LEN;
-	const int half = chunks / 2;
 	const int y = 0;
 	for (int r = 0; r < chunks; ++ r)
 	for (int q = 0; q < chunks; ++ q) {
-		int s = half - (r - half) - (q - half);
-		if (s > chunks)
-			continue;
 		chunkmgr_create_at(&client.chunkmgr, y, r, q);
 	}
 
@@ -67,7 +70,6 @@ client_frame_async(DL_TASK_ARGS)
 		appstate_transition(APPSTATE_TRANSITION_CLIENT_CLOSE);
 		return;
 	}
-	puts("frame");
 }
 
 static int
@@ -82,34 +84,55 @@ client_gl_setup(void *_)
 		if (!map3_isvalid(e))
 			continue;
 		struct chunkmesh *mesh = pool_take(&client.chunkmesh_pool);
-		chunkmesh_gl_create(mesh, e->data);
+		chunkmesh_gl_create(mesh, e->data, e->key[0], e->key[1], e->key[2]);
 		map3_put(&client.chunkmesh_map, e->key, mesh);
 	}
 
 	glClearColor(117 / 255.0f, 183 / 255.0f, 224 / 255.0f, 1);
+	window_lock_mouse(); /* XXX */
 	return 0;
 }
 
 static int
 client_gl_frame(void *_)
 {
-	client.yaw   += window.motion_x / 100.0f;
-	client.pitch += window.motion_y / 100.0f;
-	client.pitch = CLAMP(client.pitch, -M_PI/2, -FLT_EPSILON);
+	client.camera.rotation[1] -= window.motion_x / 600.0f;
+	client.camera.rotation[0] -= window.motion_y / 600.0f;
+	client.camera.rotation[0] = CLAMP(client.camera.rotation[0], -M_PI/2+0.001f, M_PI/2-0.001f);
+	fprintf(stderr, "%f\n", client.camera.rotation[0]);
+
+	/* XXX Belongs elsewhere */
+	vec3 opengl_up3 = { 0, 1, 0 };
+	glm_vec3_copy((vec3) { 0, 0, -1 }, client.camera.forward);
+	glm_vec3_rotate(client.camera.forward, client.camera.rotation[0], (vec3) { 1, 0, 0 });
+	glm_vec3_rotate(client.camera.forward, client.camera.rotation[1], (vec3) { 0, 1, 0 });
+	glm_vec3_cross(client.camera.forward, opengl_up3, client.camera.right);
+	glm_vec3_normalize(client.camera.right);
+
+	if (window.keydown[SDL_SCANCODE_W]) {
+		glm_vec3_add(client.camera.position, client.camera.forward, client.camera.position);
+	}
+
+	if (window.keydown[SDL_SCANCODE_S]) {
+		glm_vec3_sub(client.camera.position, client.camera.forward, client.camera.position);
+	}
+
+	if (window.keydown[SDL_SCANCODE_A]) {
+		glm_vec3_sub(client.camera.position, client.camera.right, client.camera.position);
+	}
+
+	if (window.keydown[SDL_SCANCODE_D]) {
+		glm_vec3_add(client.camera.position, client.camera.right, client.camera.position);
+	}
+
 	//XXX Shader, MVP etc. uniforms
 
 	/* Arcball camera rotates around region */
-	const float r = 10;
 	const float fov = glm_rad(60);
 	mat4 view, proj, mvp;
 	float aspect = window.width / (float)window.height;
 	glm_perspective(fov, aspect, 1, 1000, proj);
-	glm_lookat((vec3){r * sinf(client.pitch) * cosf(client.yaw),
-	                  r * cosf(client.pitch),
-	                  r * sinf(client.pitch) * sinf(client.yaw)},
-	           (vec3){0, 0, 0},
-	           (vec3){0, 1, 0},
-	           view);
+	glm_look(client.camera.position, client.camera.forward, opengl_up3, view);
 	glm_mat4_mulN((mat4 *[]){&proj, &view}, 2, mvp);
 
 	glUseProgram(chunkmesh_renderer.shader);
