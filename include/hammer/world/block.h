@@ -29,4 +29,11 @@ is_block_opaque(enum block b)
 	return b != BLOCK_AIR;
 }
 
+static inline void
+block_offset_euc(float r, float q, float *x, float *z)
+{
+	*x = BLOCK_EUC_WIDTH * (q + r / 2);
+	*z = r * 0.75f * BLOCK_EUC_HEIGHT;
+}
+
 #endif /* HAMMER_WORLD_BLOCK_H_ */

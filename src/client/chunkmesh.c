@@ -130,16 +130,18 @@ chunkmesh_gl_create(struct chunkmesh *m, const struct chunk *c, int cy, int cr, 
 		if (!is_block_opaque(chunk_block_at(c, y, r, q)))
 			continue;
 
+		float rr = r + cr * CHUNK_LEN;
+		float qq = q + cq * CHUNK_LEN;
+		float x, z;
+		block_offset_euc(rr, qq, &x, &z);
+
 		/* XXX Very easy occluded face cull */
 		for (int fi = 0; fi < 20; ++ fi)
 		for (int vi = 0; vi <  3; ++ vi) {
 			struct blockvertex v = hex_tris[fi][vi];
-			float yy = y + cy * CHUNK_LEN;
-			float rr = r + cr * CHUNK_LEN;
-			float qq = q + cq * CHUNK_LEN;
-			v.position[0] = v.position[0] * BLOCK_HEX_SIZE + BLOCK_EUC_WIDTH * (qq + rr / 2);
-			v.position[1] = v.position[1] * BLOCK_HEX_SIZE + yy;
-			v.position[2] = v.position[2] * BLOCK_HEX_SIZE + rr * 0.75f * BLOCK_EUC_HEIGHT;
+			v.position[0] = v.position[0] * BLOCK_HEX_SIZE + x;
+			v.position[1] = v.position[1] * BLOCK_HEX_SIZE + y + cy * CHUNK_LEN;
+			v.position[2] = v.position[2] * BLOCK_HEX_SIZE + z;
 			vs[m->vc ++] = v;
 		}
 	}

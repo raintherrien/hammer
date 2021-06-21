@@ -9,6 +9,9 @@
 #include <cglm/euler.h>
 #include <stdio.h> // xxx
 
+#define MIN_PITCH (-M_PI/2+0.001f)
+#define MAX_PITCH ( M_PI/2-0.001f)
+
 // xxx shouldn't reference server
 
 dltask appstate_client_frame;
@@ -37,13 +40,13 @@ appstate_client_setup(void)
 	map3_create(&client.chunkmesh_map);
 	pool_create(&client.chunkmesh_pool, sizeof(struct chunkmesh));
 
-	glm_vec3_zero(client.camera.position);
-	glm_vec3_zero(client.camera.rotation);
+	glm_vec3_copy((vec3) { 0, 100, 0 }, client.camera.position);
+	glm_vec3_copy((vec3) { MIN_PITCH, 0, 0 }, client.camera.rotation);
 	glm_vec3_zero(client.camera.forward);
 	glm_vec3_zero(client.camera.right);
 
 	/* XXX Generate some chunks */
-	const int chunks = 2;//(int)client.chunkmgr.region->rect_size / CHUNK_LEN;
+	const int chunks = 8;//(int)client.chunkmgr.region->rect_size / CHUNK_LEN;
 	const int y = 0;
 	for (int r = 0; r < chunks; ++ r)
 	for (int q = 0; q < chunks; ++ q) {
@@ -98,8 +101,7 @@ client_gl_frame(void *_)
 {
 	client.camera.rotation[1] -= window.motion_x / 600.0f;
 	client.camera.rotation[0] -= window.motion_y / 600.0f;
-	client.camera.rotation[0] = CLAMP(client.camera.rotation[0], -M_PI/2+0.001f, M_PI/2-0.001f);
-	fprintf(stderr, "%f\n", client.camera.rotation[0]);
+	client.camera.rotation[0] = CLAMP(client.camera.rotation[0], MIN_PITCH, MAX_PITCH);
 
 	/* XXX Belongs elsewhere */
 	vec3 opengl_up3 = { 0, 1, 0 };

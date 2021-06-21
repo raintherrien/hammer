@@ -181,7 +181,7 @@ planet_generation_lithosphere_frame(void)
 {
 	size_t steps = server.world.opts.tectonic.generations *
 	                 server.world.opts.tectonic.generation_steps;
-	if (server.planet.lithosphere->generation >= 1){//steps) {
+	if (server.planet.lithosphere->generation >= steps) {
 		/* Kick off climate loop */
 		climate_create(server.planet.climate, server.planet.lithosphere);
 		server_planet_gen.current_stage = PLANET_STAGE_CLIMATE;
@@ -198,7 +198,7 @@ planet_generation_lithosphere_frame(void)
 static void
 planet_generation_climate_frame(void)
 {
-	if (server.planet.climate->generation >= 1){//CLIMATE_GENERATIONS) {
+	if (server.planet.climate->generation >= CLIMATE_GENERATIONS) {
 		/* Kick off stream loop */
 		stream_graph_create(server.planet.stream,
 		                    server.planet.climate,
@@ -218,7 +218,7 @@ planet_generation_climate_frame(void)
 static void
 planet_generation_stream_frame(void)
 {
-	if (server.planet.stream->generation >= 1){//STREAM_GRAPH_GENERATIONS) {
+	if (server.planet.stream->generation >= STREAM_GRAPH_GENERATIONS) {
 		/* Kick off composite loop */
 		glthread_execute(planet_generation_gl_blit_composite_image, NULL);
 		server_planet_gen.current_stage = PLANET_STAGE_COMPOSITE;
