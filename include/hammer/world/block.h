@@ -6,9 +6,9 @@
  * dimensions.
  */
 
-#define BLOCK_HEX_SIZE   (1.0f) /* length of hexagon size */
-#define BLOCK_EUC_HEIGHT (2.0f) /* dimensions of hexagon on Euclidean plane */
-#define BLOCK_EUC_WIDTH  (1.73205f) /* sqrtf(3) * BLOCK_HEX_SIZE */
+#define BLOCK_HEX_SIZE (1.0f) /* length of hexagon size */
+#define BLOCK_LENGTH_Z (2.0f) /* dimensions of hexagon on Euclidean plane */
+#define BLOCK_LENGTH_X (1.73205f) /* sqrtf(3) * BLOCK_HEX_SIZE */
 
 enum block {
 	BLOCK_UNKNOWN = 0,
@@ -32,8 +32,8 @@ is_block_opaque(enum block b)
 static inline void
 block_offset_euc(float r, float q, float *x, float *z)
 {
-	*x = BLOCK_EUC_WIDTH * (q + r / 2);
-	*z = r * 0.75f * BLOCK_EUC_HEIGHT;
+	*x = BLOCK_LENGTH_X * (q + r / 2);
+	*z = r * 0.75f * BLOCK_LENGTH_Z;
 }
 
 #endif /* HAMMER_WORLD_BLOCK_H_ */

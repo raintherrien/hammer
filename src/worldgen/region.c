@@ -13,17 +13,14 @@ void
 region_create(struct region *r,
               unsigned stream_coord_left,
               unsigned stream_coord_top,
-              unsigned stream_region_hex_size,
+              unsigned stream_region_size,
               const struct stream_graph *s)
 {
-	r->hex_size = REGION_UPSCALE * (size_t)stream_region_hex_size;
-	r->hex_width = r->hex_size * 2;
-	r->hex_height = r->hex_size * sqrtf(3);
-	r->rect_size = MAX(ceilf(r->hex_width), ceilf(r->hex_height));
-	r->sediment = xcalloc(r->rect_size * r->rect_size, sizeof(*r->sediment));
-	r->stone = xcalloc(r->rect_size * r->rect_size, sizeof(*r->stone));
-	r->water = xcalloc(r->rect_size * r->rect_size, sizeof(*r->water));
-	r->stream_region_hex_size = stream_region_hex_size;
+	r->size = REGION_UPSCALE * (size_t)stream_region_size;
+	r->sediment = xcalloc(r->size * r->size, sizeof(*r->sediment));
+	r->stone = xcalloc(r->size * r->size, sizeof(*r->stone));
+	r->water = xcalloc(r->size * r->size, sizeof(*r->water));
+	r->stream_region_size = stream_region_size;
 	r->stream_coord_left = stream_coord_left;
 	r->stream_coord_top = stream_coord_top;
 	region_blit(r, s);
@@ -41,6 +38,13 @@ void
 region_erode(struct region *r)
 {
 	(void) r;
+}
+
+float
+region_stone_at(const struct region *r, float x, float z)
+{
+	/* XXX lerp */
+	return r->stone[(int)z * r->size + (int)x];
 }
 
 static void
@@ -75,8 +79,8 @@ region_blit(struct region *r,
 		{
 			float rl0 = r->stream_coord_left;
 			float rt0 = r->stream_coord_top;
-			float rr0 = r->stream_coord_left + r->rect_size;
-			float rb0 = r->stream_coord_top + r->rect_size;
+			float rr0 = r->stream_coord_left + r->size;
+			float rb0 = r->stream_coord_top + r->size;
 			float rl1 = rl0 - s->size;
 			float rr1 = rr0 - s->size;
 			float rt1 = rt0 - s->size;
@@ -135,8 +139,7 @@ region_blit(struct region *r,
 		for (float rx = left; rx - right <= FLT_EPSILON; rx += step) {
 			long wx = wrapidx(REGION_UPSCALE * (rx - r->stream_coord_left), region_wrap);
 			long wy = wrapidx(REGION_UPSCALE * (ry - r->stream_coord_top), region_wrap);
-			if ((size_t)wx >= r->hex_width ||
-			    (size_t)wy >= r->hex_height)
+			if ((size_t)wx >= r->size || (size_t)wy >= r->size)
 				continue;
 
 			float w[3] = { 0, 0, 0 };
@@ -153,7 +156,7 @@ region_blit(struct region *r,
 			if (elev < TECTONIC_CONTINENT_MASS)
 				water = TECTONIC_CONTINENT_MASS - elev;
 
-			size_t i = wy * r->hex_width + wx;
+			size_t i = wy * r->size + wx;
 			r->sediment[i] = 3;
 			r->stone[i] = REGION_HEIGHT_SCALE * elev;
 			r->water[i] = REGION_HEIGHT_SCALE * water;
@@ -167,30 +170,30 @@ region_blit(struct region *r,
 	const long long gksz = 2*gkl+1;
 	float gk[gksz];
 	GAUSSIANK(gk, gksz);
-	float *blur_line = xmalloc(r->rect_size * sizeof(*blur_line));
+	float *blur_line = xmalloc(r->size * sizeof(*blur_line));
 
 	for (size_t l = 0; l < 2; ++ l) {
-		for (size_t y = 0; y < r->hex_height; ++ y) {
-			for (size_t x = 0; x < r->hex_width; ++ x) {
+		for (size_t y = 0; y < r->size; ++ y) {
+			for (size_t x = 0; x < r->size; ++ x) {
 				blur_line[x] = 0;
 				for (int g = 0; g < gksz; ++ g) {
-					size_t i = y * r->hex_width + MIN(x+g-gkl, r->hex_width-1);
+					size_t i = y * r->size + MIN(x+g-gkl, r->size-1);
 					blur_line[x] += gk[g] * blurring[l][i];
 				}
 			}
-			for (size_t x = 0; x < r->hex_width; ++ x)
-				blurring[l][y * r->rect_size + x] = blur_line[x];
+			for (size_t x = 0; x < r->size; ++ x)
+				blurring[l][y * r->size + x] = blur_line[x];
 		}
-		for (size_t x = 0; x < r->hex_width; ++ x) {
-			for (size_t y = 0; y < r->hex_height; ++ y) {
+		for (size_t x = 0; x < r->size; ++ x) {
+			for (size_t y = 0; y < r->size; ++ y) {
 				blur_line[y] = 0;
 				for (int g = 0; g < gksz; ++ g) {
-					size_t i = MIN(y+g-gkl, r->hex_height-1) * r->hex_width + x;
+					size_t i = MIN(y+g-gkl, r->size-1) * r->size + x;
 					blur_line[y] += gk[g] * blurring[l][i];
 				}
 			}
-			for (size_t y = 0; y < r->hex_height; ++ y)
-				blurring[l][y * r->rect_size + x] = blur_line[y];
+			for (size_t y = 0; y < r->size; ++ y)
+				blurring[l][y * r->size + x] = blur_line[y];
 		}
 	}
 

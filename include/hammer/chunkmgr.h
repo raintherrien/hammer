@@ -14,7 +14,7 @@ struct chunkmgr {
 };
 
 static inline void
-world_to_chunk(int wy, int wr, int wq, int *cy, int *cr, int *cq)
+world_to_chunk(long wy, long wr, long wq, long *cy, long *cr, long *cq)
 {
         *cy = wy / CHUNK_LEN;
         *cr = wr / CHUNK_LEN;
@@ -23,7 +23,7 @@ world_to_chunk(int wy, int wr, int wq, int *cy, int *cr, int *cq)
 
 void chunkmgr_create(struct chunkmgr *, const struct region *);
 void chunkmgr_destroy(struct chunkmgr *);
-struct chunk *chunkmgr_chunk_at(struct chunkmgr *, int cy, int cr, int cq);
-struct chunk *chunkmgr_create_at(struct chunkmgr *, int cy, int cr, int cq);
+struct chunk *chunkmgr_chunk_at(struct chunkmgr *, long cy, long cr, long cq);
+struct chunk *chunkmgr_create_at(struct chunkmgr *, long cy, long cr, long cq);
 
 #endif /* HAMMER_CHUNKMGR_H_ */

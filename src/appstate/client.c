@@ -7,12 +7,12 @@
 #include "hammer/window.h"
 #include <cglm/cam.h>
 #include <cglm/euler.h>
-#include <stdio.h> // xxx
 
 #define MIN_PITCH (-M_PI/2+0.001f)
 #define MAX_PITCH ( M_PI/2-0.001f)
 
-// xxx shouldn't reference server
+/* TODO shouldn't reference server */
+extern void chunkmgr_generate_all_debug(struct chunkmgr *mgr);
 
 dltask appstate_client_frame;
 
@@ -24,7 +24,9 @@ static struct {
 		vec3 position;
 		vec3 rotation;
 		vec3 forward;
+		vec3 forward_horizontal;
 		vec3 right;
+		float fov;
 	} camera;
 } client;
 
@@ -40,18 +42,16 @@ appstate_client_setup(void)
 	map3_create(&client.chunkmesh_map);
 	pool_create(&client.chunkmesh_pool, sizeof(struct chunkmesh));
 
-	glm_vec3_copy((vec3) { 0, 100, 0 }, client.camera.position);
+	float half = server.world.region.size / 2 / 50 /* xxx chunkmesh scale */;
+	glm_vec3_copy((vec3) { half, 100, half }, client.camera.position);
 	glm_vec3_copy((vec3) { MIN_PITCH, 0, 0 }, client.camera.rotation);
 	glm_vec3_zero(client.camera.forward);
+	glm_vec3_zero(client.camera.forward_horizontal);
 	glm_vec3_zero(client.camera.right);
+	client.camera.fov = 60;
 
-	/* XXX Generate some chunks */
-	const int chunks = 8;//(int)client.chunkmgr.region->rect_size / CHUNK_LEN;
-	const int y = 0;
-	for (int r = 0; r < chunks; ++ r)
-	for (int q = 0; q < chunks; ++ q) {
-		chunkmgr_create_at(&client.chunkmgr, y, r, q);
-	}
+	/* TODO: Generate some chunks for debugging */
+	chunkmgr_generate_all_debug(&client.chunkmgr);
 
 	glthread_execute(client_gl_setup, NULL);
 }
@@ -80,7 +80,7 @@ client_gl_setup(void *_)
 {
 	chunkmesh_renderer_gl_create();
 
-	/* XXX Mesh those chunks */
+	/* TODO: Mesh out debug chunks */
 	size_t chunk_count = client.chunkmgr.chunk_map.entries_size;
 	for (size_t i = 0; i < chunk_count; ++ i) {
 		struct map3_entry *e = &client.chunkmgr.chunk_map.entries[i];
@@ -92,7 +92,7 @@ client_gl_setup(void *_)
 	}
 
 	glClearColor(117 / 255.0f, 183 / 255.0f, 224 / 255.0f, 1);
-	window_lock_mouse(); /* XXX */
+	window_lock_mouse(); /* TODO: Bad */
 	return 0;
 }
 
@@ -103,20 +103,24 @@ client_gl_frame(void *_)
 	client.camera.rotation[0] -= window.motion_y / 600.0f;
 	client.camera.rotation[0] = CLAMP(client.camera.rotation[0], MIN_PITCH, MAX_PITCH);
 
-	/* XXX Belongs elsewhere */
-	vec3 opengl_up3 = { 0, 1, 0 };
+	/* TODO: Belongs elsewhere */
+	vec3 opengl_up = { 0, 1, 0 };
 	glm_vec3_copy((vec3) { 0, 0, -1 }, client.camera.forward);
 	glm_vec3_rotate(client.camera.forward, client.camera.rotation[0], (vec3) { 1, 0, 0 });
 	glm_vec3_rotate(client.camera.forward, client.camera.rotation[1], (vec3) { 0, 1, 0 });
-	glm_vec3_cross(client.camera.forward, opengl_up3, client.camera.right);
+	glm_vec3_cross(client.camera.forward, opengl_up, client.camera.right);
 	glm_vec3_normalize(client.camera.right);
 
+	glm_vec3_copy(client.camera.forward, client.camera.forward_horizontal);
+	client.camera.forward_horizontal[1] = 0;
+	glm_vec3_normalize(client.camera.forward_horizontal);
+
 	if (window.keydown[SDL_SCANCODE_W]) {
-		glm_vec3_add(client.camera.position, client.camera.forward, client.camera.position);
+		glm_vec3_add(client.camera.position, client.camera.forward_horizontal, client.camera.position);
 	}
 
 	if (window.keydown[SDL_SCANCODE_S]) {
-		glm_vec3_sub(client.camera.position, client.camera.forward, client.camera.position);
+		glm_vec3_sub(client.camera.position, client.camera.forward_horizontal, client.camera.position);
 	}
 
 	if (window.keydown[SDL_SCANCODE_A]) {
@@ -127,14 +131,33 @@ client_gl_frame(void *_)
 		glm_vec3_add(client.camera.position, client.camera.right, client.camera.position);
 	}
 
+	if (window.keydown[SDL_SCANCODE_SPACE]) {
+		glm_vec3_add(client.camera.position, opengl_up, client.camera.position);
+	}
+
+	if (window.keydown[SDL_SCANCODE_LSHIFT]) {
+		glm_vec3_sub(client.camera.position, opengl_up, client.camera.position);
+	}
+
+	if (window.keydown[SDL_SCANCODE_P]) {
+		fprintf(stderr, "%f\t%f\t%f\n", client.camera.position[0],
+		                                client.camera.position[1],
+		                                client.camera.position[2]);
+	}
+
+	if (window.scroll)
+	{
+		client.camera.fov -= window.scroll / 10.0f;
+		client.camera.fov = CLAMP(client.camera.fov, 30, 60);
+	}
+
 	//XXX Shader, MVP etc. uniforms
 
 	/* Arcball camera rotates around region */
-	const float fov = glm_rad(60);
 	mat4 view, proj, mvp;
 	float aspect = window.width / (float)window.height;
-	glm_perspective(fov, aspect, 1, 1000, proj);
-	glm_look(client.camera.position, client.camera.forward, opengl_up3, view);
+	glm_perspective(glm_rad(client.camera.fov), aspect, 1, 2048, proj);
+	glm_look(client.camera.position, client.camera.forward, opengl_up, view);
 	glm_mat4_mulN((mat4 *[]){&proj, &view}, 2, mvp);
 
 	glUseProgram(chunkmesh_renderer.shader);

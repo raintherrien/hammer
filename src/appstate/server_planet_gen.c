@@ -592,56 +592,43 @@ planet_generation_gl_frame(void *_)
 		gui_text("Ctrl+scroll to resize region", normal_text_opts);
 		gui_stack_break(&stack);
 		/* Determine the region highlighted */
-		float stream_region_hex_size = STREAM_REGION_SIZE_MIN * (1 << server_planet_gen.selected_region_size_mag2);
-		float stream_region_hex_width = stream_region_hex_size * 2;
-		float stream_region_hex_height = stream_region_hex_size * sqrtf(3);
+		float stream_region_size = STREAM_REGION_SIZE_MIN * (1 << server_planet_gen.selected_region_size_mag2);
 		float scale = LITHOSPHERE_LEN / (float)server_planet_gen.composite_size;
 		float zoom = server_planet_gen.map_zoom * scale;
 		float tx = server_planet_gen.map_tran_x * server_planet_gen.composite_size;
 		float ty = server_planet_gen.map_tran_y * server_planet_gen.composite_size;
 		/* world coords */
-		float rl = window.mouse_x / zoom + tx - stream_region_hex_width / 2;
-		float rt = window.mouse_y / zoom + ty - stream_region_hex_height / 2;
-		float rr = rl + stream_region_hex_width;
-		float rb = rt + stream_region_hex_height;
+		float rl = window.mouse_x / zoom + tx - stream_region_size / 2;
+		float rt = window.mouse_y / zoom + ty - stream_region_size / 2;
+		float rr = rl + stream_region_size;
+		float rb = rt + stream_region_size;
 
-		/* window hexagon coords */
+		/* window coords */
 		float wr_left   = (rl - tx) * zoom;
 		float wr_right  = (rr - tx) * zoom;
 		float wr_top    = (rt - ty) * zoom;
 		float wr_bottom = (rb - ty) * zoom;
-		float wr_left_corner  = (rl - tx + stream_region_hex_width / 4) * zoom;
-		float wr_right_corner = (rr - tx - stream_region_hex_width / 4) * zoom;
-		float wr_vertical_ctr   = (wr_top + wr_bottom) / 2;
-		float wr_horizontal_ctr = (wr_left + wr_right) / 2;
-		/* Label the hexagon half height */
-		char region_hex_hw_label[64];
-		snprintf(region_hex_hw_label, 64, "%ld", lroundf(REGION_UPSCALE * stream_region_hex_size));
+		/* Label the region length */
+		char region_size_label[64];
+		snprintf(region_size_label, 64, "%ld^2", lroundf(REGION_UPSCALE * stream_region_size));
 		gui_container_pop();
-		gui_text(region_hex_hw_label, (struct text_opts) {
+		gui_text(region_size_label, (struct text_opts) {
 			TEXT_OPTS_DEFAULTS,
-			.xoffset = wr_horizontal_ctr,
+			.xoffset = wr_left,
 			.yoffset = wr_top,
 			.zoffset = 1,
 			.size = 20
 		});
 		gui_container_push(&stack);
-		/*
-		 * Highlight the region with a white hexagon, from 9 o'clock
-		 * going clockwise.
-		 */
-		gui_line(wr_left, wr_vertical_ctr, 89, 1, 0xffffffff,
-		         wr_left_corner, wr_top, 89, 1, 0xffffffff);
-		gui_line(wr_left_corner, wr_top, 89, 1, 0xffffffff,
-		         wr_right_corner, wr_top, 89, 1, 0xffffffff);
-		gui_line(wr_right_corner, wr_top, 89, 1, 0xffffffff,
-		         wr_right, wr_vertical_ctr, 89, 1, 0xffffffff);
-		gui_line(wr_right, wr_vertical_ctr, 89, 1, 0xffffffff,
-		         wr_right_corner, wr_bottom, 89, 1, 0xffffffff);
-		gui_line(wr_right_corner, wr_bottom, 89, 1, 0xffffffff,
-		         wr_left_corner, wr_bottom, 89, 1, 0xffffffff);
-		gui_line(wr_left_corner, wr_bottom, 89, 1, 0xffffffff,
-		         wr_left, wr_vertical_ctr, 89, 1, 0xffffffff);
+		/* Highlight the region with a white box */
+		gui_line(wr_left, wr_top, 89, 1, 0xffffffff,
+		         wr_right, wr_top, 89, 1, 0xffffffff);
+		gui_line(wr_left, wr_bottom, 89, 1, 0xffffffff,
+		         wr_right, wr_bottom, 89, 1, 0xffffffff);
+		gui_line(wr_left, wr_top, 89, 1, 0xffffffff,
+		         wr_left, wr_bottom, 89, 1, 0xffffffff);
+		gui_line(wr_right, wr_top, 89, 1, 0xffffffff,
+		         wr_right, wr_bottom, 89, 1, 0xffffffff);
 		if (window.unhandled_mouse_press[MOUSEBL]) {
 			server_planet_gen.selected_region_x = wrapidx(rl, server_planet_gen.composite_size);
 			server_planet_gen.selected_region_y = wrapidx(rt, server_planet_gen.composite_size);

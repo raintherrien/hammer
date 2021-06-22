@@ -29,9 +29,6 @@ struct stream_graph;
 #define REGION_GENERATIONS 1
 
 /*
- * TODO: Explain region is a flat-topped hexagon, the 90 degree translation of
- * our smaller hexagons which are point-topped.
- *
  * TODO: This method of SPH hydraulic erosion could, I think pretty easily,
  * be applied to not only a region but also its Moore neighborhood, and
  * interpolation between regions generated separately could allow us to grow
@@ -44,16 +41,13 @@ struct region {
         float *sediment;
         float *stone;
         float *water;
-        size_t hex_size;
-        size_t rect_size;
-        float  hex_height;
-        float  hex_width;
+        size_t size;
         /*
          * Coordinates of the region within the stream graph (i.e. not taking
          * into account REGION_UPSCALE). Note that it's very likely the area
          * of our region will wrap around stream_graph->size.
          */
-        unsigned stream_region_hex_size;
+        unsigned stream_region_size;
         unsigned stream_coord_left;
         unsigned stream_coord_top;
 };
@@ -61,9 +55,12 @@ struct region {
 void region_create(struct region *,
                    unsigned stream_coord_left,
                    unsigned stream_coord_top,
-                   unsigned stream_region_hex_size,
+                   unsigned stream_region_size,
                    const struct stream_graph *);
 void region_destroy(struct region *);
 void region_erode(struct region *);
+
+/* Performs interpolation */
+float region_stone_at(const struct region *, float x, float z);
 
 #endif /* HAMMER_WORLDGEN_REGION_H_ */

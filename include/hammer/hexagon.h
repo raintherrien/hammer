@@ -17,14 +17,14 @@
  * Amit Patel's excellent article. For consistency we also use the axial
  * coordinates in said paper:
  *
- *      +s  -r  +q
+ *      +q  -r  +s
  *        \  |  /
  *         \ | /
  *          \|/
  *          /|\
  *         / | \
  *        /  |  \
- *      -q  +r  -s
+ *      -s  +r  -q
  *
  * If you're confused as to why r seems to be inverted relative to q/s, that's
  * okay. I was too. The best way to visualize this is to map a rhombus in
@@ -38,6 +38,27 @@
  *       (0,3) (1,3) (2,3) (3,3)
  * Notice that if you shift each row of hexagons by w/2 then (r,q) look an
  * awful lot like (x,z).
+ *
+ * When we're drawing a hexagon it looks like this:
+ *
+ * +--x
+ * |       A
+ * y  F         B
+ *         +
+ *    E         C
+ *         D
+ *
+ * w = size * 2 * sin(60 degrees) = size * sqrt(3)
+ * h = size * 2
+ * m = size * 0.5
+ * n = size * 1.5
+ *
+ * A = (w/2, 0)
+ * B = (w  , m)
+ * C = (w  , n)
+ * D = (w/2, h)
+ * E = (0  , n)
+ * F = (0  , m)
  */
 
 /*

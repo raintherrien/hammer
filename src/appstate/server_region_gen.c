@@ -2,7 +2,6 @@
 #include "hammer/error.h"
 #include "hammer/glsl.h"
 #include "hammer/glthread.h"
-#include "hammer/hexagon.h"
 #include "hammer/math.h"
 #include "hammer/mem.h"
 #include "hammer/server.h"
@@ -151,24 +150,6 @@ region_generation_gl_create(void *_)
 	renderer->render_verts = 0;
 	for (float y = 0; y <= renderer->render_size; ++ y)
 	for (float x = 0; x <= renderer->render_size; ++ x) {
-		/* Crudely emulate the hexagonal region shape */
-		float approx_region_hex_size = renderer->render_size / 2.0f;
-		float approx_cell_hex_size = 0.577f; /* sqrtf(3) / 3 */
-		float q, r;
-		/*
-		 * XXX Add width lost to hexagon width/height ratio to keep
-		 * our region centered on whatever land features the user
-		 * selected.
-		 */
-		float xxxoffset = (renderer->render_size - approx_region_hex_size * sqrtf(3)) / 2;
-		hex_pixel_to_axial(approx_cell_hex_size,
-		                   x - renderer->render_size / 2.0f,
-		                   y - renderer->render_size / 2.0f + xxxoffset,
-		                   &q, &r);
-		float d = MAX(MAX(fabsf(q), fabsf(r)), fabsf(-q-r));
-		if (d > approx_region_hex_size)
-			continue;
-
 		GLfloat tris[6][2] = {
 			{ x+0, y+0 },
 			{ x+0, y+1 },
@@ -202,7 +183,7 @@ region_generation_gl_create(void *_)
 		glTexImage2D(GL_TEXTURE_2D,
 		             0, /* level */
 		             GL_R32F,
-		             server.world.region.rect_size, server.world.region.rect_size,
+		             server.world.region.size, server.world.region.size,
 		             0, /* border */
 		             GL_RED,
 		             GL_FLOAT,
@@ -217,7 +198,7 @@ region_generation_gl_create(void *_)
 
 	/* Constant uniform values */
 	glUniform1f(renderer->uniforms.width, renderer->render_size);
-	glUniform1f(renderer->uniforms.scale, renderer->render_size / (float)server.world.region.rect_size);
+	glUniform1f(renderer->uniforms.scale, renderer->render_size / (float)server.world.region.size);
 	glUniform1i(renderer->uniforms.sediment_sampler, 0);
 	glUniform1i(renderer->uniforms.stone_sampler, 1);
 	glUniform1i(renderer->uniforms.water_sampler, 2);
@@ -296,7 +277,7 @@ region_generation_gl_frame(void *_)
 	char region_label[128];
 	snprintf(region_label, 128, "Seed: %llu, %zu @ (%u,%u)",
 	         server.world.opts.seed,
-	         server.world.region.hex_size,
+	         server.world.region.size,
 	         server.world.region.stream_coord_left,
 	         server.world.region.stream_coord_top);
 	gui_text(region_label, normal_text_opts);
@@ -349,21 +330,21 @@ region_generation_gl_blit_heightmap(void *_)
 	glTextureSubImage2D(server_region_gen.renderer.heightmap_imgs[HEIGHTMAP_IMG_SEDIMENT],
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
-	                    server.world.region.rect_size, server.world.region.rect_size, /* w,h */
+	                    server.world.region.size, server.world.region.size, /* w,h */
 	                    GL_RED, GL_FLOAT,
 	                    server.world.region.sediment);
 
 	glTextureSubImage2D(server_region_gen.renderer.heightmap_imgs[HEIGHTMAP_IMG_STONE],
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
-	                    server.world.region.rect_size, server.world.region.rect_size, /* w,h */
+	                    server.world.region.size, server.world.region.size, /* w,h */
 	                    GL_RED, GL_FLOAT,
 	                    server.world.region.stone);
 
 	glTextureSubImage2D(server_region_gen.renderer.heightmap_imgs[HEIGHTMAP_IMG_WATER],
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
-	                    server.world.region.rect_size, server.world.region.rect_size, /* w,h */
+	                    server.world.region.size, server.world.region.size, /* w,h */
 	                    GL_RED, GL_FLOAT,
 	                    server.world.region.water);
 
