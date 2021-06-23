@@ -19,9 +19,7 @@ void chunkmgr_destroy(struct chunkmgr *mgr)
 struct chunk *
 chunkmgr_chunk_at(struct chunkmgr *mgr, long cy, long cr, long cq)
 {
-	void *d;
-	map3_get(&mgr->chunk_map, (map3_key) { cy, cr, cq }, &d);
-	return d;
+	return map3_get(&mgr->chunk_map, (map3_key) { cy, cr, cq });
 }
 
 struct chunk *
@@ -45,7 +43,7 @@ chunkmgr_create_at(struct chunkmgr *mgr, long cy, long cr, long cq)
 		float x, z;
 		hex_axial_to_pixel(1, fq, fr, &x, &z);
 
-		/* Limit to hexagonal region */
+		/* Limit to region */
 		if (x < 0 || z < 0 || x >= mgr->region->size || z >= mgr->region->size)
 		{
 			*b = BLOCK_AIR;
@@ -58,6 +56,8 @@ chunkmgr_create_at(struct chunkmgr *mgr, long cy, long cr, long cq)
 	return c;
 }
 
+/*
+ * TODO: Something like this function could identify max Y per chunk
 void
 chunkmgr_generate_all_debug(struct chunkmgr *mgr)
 {
@@ -77,3 +77,4 @@ chunkmgr_generate_all_debug(struct chunkmgr *mgr)
 		chunkmgr_create_at(mgr, 0, r, q);
 	}
 }
+*/

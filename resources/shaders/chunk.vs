@@ -11,5 +11,5 @@ const vec3 light = normalize(vec3(1, 1, 1));
 void main()
 {
 	gl_Position = mvp * vec4(in_position, 1);
-	fs_light = in_position.y;//max(0.2, dot(in_normal, light));
+	fs_light = max(0.2, dot(in_normal, light));
 }

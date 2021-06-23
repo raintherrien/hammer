@@ -146,8 +146,8 @@ map3_del(struct map3 *m, map3_key key)
 	} while (e->probe_length > 0);
 }
 
-void
-map3_get(struct map3 *m, map3_key key, void **d)
+void *
+map3_get(struct map3 *m, map3_key key)
 {
 	const size_t size_mask = m->entries_size - 1;
 	const uint64_t hash = map3_hash(key);
@@ -155,15 +155,13 @@ map3_get(struct map3 *m, map3_key key, void **d)
 	size_t probe_length = 0;
 	struct map3_entry *e = &m->entries[index];
 	do {
-		if (map3_eq(e, hash, key)) {
-			*d = e->data;
-			return;
-		}
+		if (map3_eq(e, hash, key))
+			return e->data;
 		++ probe_length;
 		e = &m->entries[(index + probe_length) & size_mask];
 	} while (probe_length <= e->probe_length);
 
-	*d = NULL;
+	return NULL;
 }
 
 void

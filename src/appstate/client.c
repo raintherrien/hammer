@@ -2,6 +2,7 @@
 #include "hammer/chunkmgr.h"
 #include "hammer/client/chunkmesh.h"
 #include "hammer/glthread.h"
+#include "hammer/hexagon.h"
 #include "hammer/math.h"
 #include "hammer/server.h"
 #include "hammer/window.h"
@@ -12,7 +13,6 @@
 #define MAX_PITCH ( M_PI/2-0.001f)
 
 /* TODO shouldn't reference server */
-extern void chunkmgr_generate_all_debug(struct chunkmgr *mgr);
 
 dltask appstate_client_frame;
 
@@ -42,16 +42,13 @@ appstate_client_setup(void)
 	map3_create(&client.chunkmesh_map);
 	pool_create(&client.chunkmesh_pool, sizeof(struct chunkmesh));
 
-	float half = server.world.region.size / 2 / 50 /* xxx chunkmesh scale */;
-	glm_vec3_copy((vec3) { half, 100, half }, client.camera.position);
+	float half = server.world.region.size / 2;
+	glm_vec3_copy((vec3) { half, 50, half }, client.camera.position);
 	glm_vec3_copy((vec3) { MIN_PITCH, 0, 0 }, client.camera.rotation);
 	glm_vec3_zero(client.camera.forward);
 	glm_vec3_zero(client.camera.forward_horizontal);
 	glm_vec3_zero(client.camera.right);
 	client.camera.fov = 60;
-
-	/* TODO: Generate some chunks for debugging */
-	chunkmgr_generate_all_debug(&client.chunkmgr);
 
 	glthread_execute(client_gl_setup, NULL);
 }
@@ -73,26 +70,38 @@ client_frame_async(DL_TASK_ARGS)
 		appstate_transition(APPSTATE_TRANSITION_CLIENT_CLOSE);
 		return;
 	}
+
+	/* DEBUG: Generate chunks around camera for */
+	float hex_pos[2];
+	hex_pixel_to_axial(BLOCK_HEX_SIZE,
+	                   client.camera.position[0],
+	                   client.camera.position[2],
+	                   hex_pos+0, hex_pos+1);
+	fprintf(stderr, "(y,r,q)\t(%ld,%ld,%ld)\n",
+	        (long)(client.camera.position[1] / CHUNK_LEN),
+	        (long)(hex_pos[1] / CHUNK_LEN),
+	        (long)(hex_pos[0] / CHUNK_LEN));
+	float miny = client.camera.position[1] / CHUNK_LEN - 1;
+	float maxy = client.camera.position[1] / CHUNK_LEN + 1;
+	float maxr = hex_pos[1] / CHUNK_LEN + 10;
+	float minr = hex_pos[1] / CHUNK_LEN - 10;
+	float maxq = hex_pos[0] / CHUNK_LEN + 10;
+	float minq = hex_pos[0] / CHUNK_LEN - 10;
+	for (long y = miny; y <= maxy; ++ y)
+	for (long r = minr; r <= maxr; ++ r)
+	for (long q = minq; q <= maxq; ++ q) {
+		if (chunkmgr_chunk_at(&client.chunkmgr, y, r, q) == NULL) {
+			chunkmgr_create_at(&client.chunkmgr, y, r, q);
+		}
+	}
 }
 
 static int
 client_gl_setup(void *_)
 {
 	chunkmesh_renderer_gl_create();
-
-	/* TODO: Mesh out debug chunks */
-	size_t chunk_count = client.chunkmgr.chunk_map.entries_size;
-	for (size_t i = 0; i < chunk_count; ++ i) {
-		struct map3_entry *e = &client.chunkmgr.chunk_map.entries[i];
-		if (!map3_isvalid(e))
-			continue;
-		struct chunkmesh *mesh = pool_take(&client.chunkmesh_pool);
-		chunkmesh_gl_create(mesh, e->data, e->key[0], e->key[1], e->key[2]);
-		map3_put(&client.chunkmesh_map, e->key, mesh);
-	}
-
 	glClearColor(117 / 255.0f, 183 / 255.0f, 224 / 255.0f, 1);
-	window_lock_mouse(); /* TODO: Bad */
+	window_lock_mouse(); /* DEBUG: Bad */
 	return 0;
 }
 
@@ -102,6 +111,17 @@ client_gl_frame(void *_)
 	client.camera.rotation[1] -= window.motion_x / 600.0f;
 	client.camera.rotation[0] -= window.motion_y / 600.0f;
 	client.camera.rotation[0] = CLAMP(client.camera.rotation[0], MIN_PITCH, MAX_PITCH);
+
+	/* DEBUG: Mesh out debug chunks */
+	size_t chunkmgr_entry_count = client.chunkmgr.chunk_map.entries_size;
+	for (size_t i = 0; i < chunkmgr_entry_count; ++ i) {
+		struct map3_entry *e = &client.chunkmgr.chunk_map.entries[i];
+		if (!map3_isvalid(e) || map3_get(&client.chunkmesh_map, e->key) != NULL)
+			continue;
+		struct chunkmesh *mesh = pool_take(&client.chunkmesh_pool);
+		chunkmesh_gl_create(mesh, e->data, e->key[0], e->key[1], e->key[2]);
+		map3_put(&client.chunkmesh_map, e->key, mesh);
+	}
 
 	/* TODO: Belongs elsewhere */
 	vec3 opengl_up = { 0, 1, 0 };
@@ -164,8 +184,8 @@ client_gl_frame(void *_)
 	glUniformMatrix4fv(chunkmesh_renderer.uniforms.mvp, 1, GL_FALSE, (float *)mvp);
 
 	/* Render chunks */
-	size_t chunk_count = client.chunkmesh_map.entries_size;
-	for (size_t i = 0; i < chunk_count; ++ i) {
+	size_t mesh_count = client.chunkmesh_map.entries_size;
+	for (size_t i = 0; i < mesh_count; ++ i) {
 		struct map3_entry *e = &client.chunkmesh_map.entries[i];
 		if (!map3_isvalid(e))
 			continue;

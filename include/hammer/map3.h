@@ -25,9 +25,9 @@ struct map3 {
 void map3_create(struct map3 *);
 void map3_destroy(struct map3 *);
 
-void map3_del(struct map3 *, map3_key key);
-void map3_get(struct map3 *, map3_key key, void **);
-void map3_put(struct map3 *, map3_key key, void *);
+void  map3_del(struct map3 *, map3_key key);
+void *map3_get(struct map3 *, map3_key key);
+void  map3_put(struct map3 *, map3_key key, void *);
 
 /*
  * map3_isvalid() may be used to iterate over map3::entries directly. For

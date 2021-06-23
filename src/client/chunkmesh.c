@@ -14,7 +14,7 @@ struct blockvertex {
 };
 
 const float diagN = 0.866f; /* sqrtf(3) / 2 or sinf(60 degrees)*/
-static const struct blockvertex hex_tris[4][3] = {
+static const struct blockvertex hex_tris[20][3] = {
 	{
 		{ { 0, 1, -1 }, { 0, 1, 0 } },
 		{ { -diagN, 1, 0.5f }, { 0, 1, 0 } },
@@ -34,7 +34,7 @@ static const struct blockvertex hex_tris[4][3] = {
 		{ { diagN, 1, 0.5f }, { 0, 1, 0 } },
 		{ { -diagN, 1, 0.5f }, { 0, 1, 0 } },
 		{ { 0, 1, 1 }, { 0, 1, 0 } },
-	},/*
+	},
 	{
 		{ { 0, 0, -1 }, { -diagN, 0, -0.5f } },
 		{ { -diagN, 0, -0.5f }, { -diagN, 0, -0.5f } },
@@ -114,13 +114,13 @@ static const struct blockvertex hex_tris[4][3] = {
 		{ { 0, 0, 1 }, { 0, -1, 0 } },
 		{ { -diagN, 0, -0.5f }, { 0, -1, 0 } },
 		{ { diagN, 0, 0.5f }, { 0, -1, 0 } },
-	},*/
+	},
 };
 
 void
 chunkmesh_gl_create(struct chunkmesh *m, const struct chunk *c, long cy, long cr, long cq)
 {
-	const size_t n = 4 * 3;
+	const size_t n = 20 * 3;
 	struct blockvertex *vs = xmalloc(CHUNK_VOL * n * sizeof(*vs));
 	m->vc = 0;
 
@@ -131,18 +131,22 @@ chunkmesh_gl_create(struct chunkmesh *m, const struct chunk *c, long cy, long cr
 		if (!is_block_opaque(b))
 			continue;
 
+		/* DEBUG: VERY basic occlusion */
+		if (y != CHUNK_LEN-1 && chunk_block_at(c, y+1, r, q) != BLOCK_AIR)
+			continue;
+
 		float rr = r + cr * CHUNK_LEN;
 		float qq = q + cq * CHUNK_LEN;
 		float x, z;
 		block_offset_euc(rr, qq, &x, &z);
 
 		/* XXX Very easy occluded face cull */
-		for (size_t fi = 0; fi < 4; ++ fi)
+		for (size_t fi = 0; fi < 20; ++ fi)
 		for (size_t vi = 0; vi <  3; ++ vi) {
 			struct blockvertex v = hex_tris[fi][vi];
-			v.position[0] = (v.position[0] * BLOCK_HEX_SIZE + x) / 50;
-			v.position[1] = (v.position[1] * BLOCK_HEX_SIZE + y + cy * CHUNK_LEN) / 50;
-			v.position[2] = (v.position[2] * BLOCK_HEX_SIZE + z) / 50;
+			v.position[0] = (v.position[0] * BLOCK_HEX_SIZE + x);
+			v.position[1] = (v.position[1] * BLOCK_HEX_SIZE + y + cy * CHUNK_LEN);
+			v.position[2] = (v.position[2] * BLOCK_HEX_SIZE + z);
 			vs[m->vc ++] = v;
 		}
 	}
