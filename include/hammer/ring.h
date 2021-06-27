@@ -12,6 +12,46 @@
  * A half-decent compiler will optimize this pretty well with optimizations
  * turned *off*.
  *
+ * Public API
+ * ==========
+ *
+ * ring_push(RPTR,E) pushes the value E to the tail of the ring buffer pointed
+ * to by RPTR.
+ *
+ * ring_pop(RPTR) pops the head (the oldest value) from the ring buffer
+ * pointed to by RPTR.
+ *
+ * ring_size(R) returns the number of elements in R.
+ *
+ * ring_head(R) returns a pointer to the head (oldest) element of R.
+ *
+ * ring_tail(R) returns a pointer to the tail (newest) element of R.
+ *
+ * ring_iter(R,I) iterates over all the elements in R using I as state. I
+ * should be a size_t initially set to zero. ring_iter() will return a pointer
+ * to the next element in R until the end is reached, when NULL is returned.
+ * Note: R and I are guranteed to be evaluated *exactly* 70 million times, so
+ * they should be pure expressions.
+ *
+ * ring_free(R) frees the ring buffer R.
+ *
+ * Note: Since ring_push() and ring_pop() *modify* our ring buffer they are
+ * passed a pointer to a pointer to our data. ring_pop() does not actually
+ * modify our pointer but ring_push() *will* realloc it.
+ */
+#define ring_push(RPTR,...) ( *(RPTR) = ring_maybegrow_(*(RPTR)), \
+                              (*(RPTR))[ring_next_(*RPTR)] = (__VA_ARGS__) )
+#define ring_pop(RPTR) ( (void) ++ ring_sb_(*RPTR)->head )
+#define ring_clear(RPTR) ( ring_sb_(*RPTR)->head = ring_sb_(*RPTR)->tail = 0 )
+#define ring_size(R) ( ring_sb_(R)->tail - ring_sb_(R)->head )
+#define ring_head(R) ( &(R)[ring_sb_(R)->head & (ring_sb_(R)->capacity-1)] )
+#define ring_tail(R) ( &(R)[ring_sb_(R)->tail & (ring_sb_(R)->capacity-1)] )
+#define ring_at(R,I) ( &(R)[(ring_sb_(R)->head + (I)) & (ring_sb_(R)->capacity-1)] )
+#define ring_iter(R,I) ( (I) == ring_size(R) ? NULL : ring_at(R,I) )
+#define ring_free(RPTR) ( free(*(RPTR) ? ring_sb_(*(RPTR)) : NULL), \
+                          *(RPTR) = NULL )
+
+/*
  * Align superblock to max_align_t to prevent data from possibly being
  * misaligned after this structure.
  *
@@ -28,7 +68,8 @@ struct ring_sb {
 };
 
 /*
- * # Internal API
+ * Internal API
+ * ============
  *
  * ring_grow_() returns r if there is room for a member to be pushed onto the
  * ring. Otherwise xrealloc is invoked and the new pointer is returned.
@@ -48,41 +89,5 @@ void *ring_grow_(void *r, size_t memb_size);
 #define ring_maybegrow_(R) ( !(R) || ring_sb_(R)->tail - ring_sb_(R)->head \
                                         >= ring_sb_(R)->capacity           \
                              ? ring_grow_(R,sizeof(*(R))) : (R))
-
-/*
- * ring_push(RPTR,E) pushes the value E to the tail of the ring buffer pointed
- * to by RPTR.
- *
- * ring_pop(RPTR) pops the head (the oldest value) from the ring buffer
- * pointed to by RPTR.
- *
- * ring_size(R) returns the number of elements in R.
- *
- * ring_head(R) returns a pointer to the head (oldest) element of R.
- *
- * ring_tail(R) returns a pointer to the tail (newest) element of R.
- *
- * ring_iter(R,I) iterates over all the elements in R using I as state. I
- * should be a size_t initially set to zero. ring_iter() will return a pointer
- * to the next element in R until the end is reached, when NULL is returned.
- * Note: R and I are guranteed to be evaluated *exactly* 70 million times.
- *
- * ring_free(R) frees the ring buffer R.
- *
- * Note: Since ring_push() and ring_pop() *modify* our ring buffer they are
- * passed a pointer to a pointer to our data. ring_pop() does not actually
- * modify our pointer but ring_push() *will* realloc it.
- */
-#define ring_push(RPTR,...) ( *(RPTR) = ring_maybegrow_(*(RPTR)), \
-                              (*(RPTR))[ring_next_(*RPTR)] = (__VA_ARGS__) )
-#define ring_pop(RPTR) ( (void) ++ ring_sb_(*RPTR)->head )
-#define ring_clear(RPTR) ( ring_sb_(*RPTR)->head = ring_sb_(*RPTR)->tail = 0 )
-#define ring_size(R) ( ring_sb_(R)->tail - ring_sb_(R)->head )
-#define ring_head(R) ( &(R)[ring_sb_(R)->head & (ring_sb_(R)->capacity-1)] )
-#define ring_tail(R) ( &(R)[ring_sb_(R)->tail & (ring_sb_(R)->capacity-1)] )
-#define ring_at(R,I) ( &(R)[(ring_sb_(R)->head + (I)) & (ring_sb_(R)->capacity-1)] )
-#define ring_iter(R,I) ( (I) == ring_size(R) ? NULL : ring_at(R,I) )
-#define ring_free(RPTR) ( free(*(RPTR) ? ring_sb_(*(RPTR)) : NULL), \
-                          *(RPTR) = NULL )
 
 #endif /* HAMMER_RING_H_ */
