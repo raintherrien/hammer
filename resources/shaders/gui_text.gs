@@ -20,15 +20,15 @@ uniform mat4 ortho;
 void main()
 {
 	for (int i = 0; i < gl_in.length (); ++ i) {
-		float skew = (gs_style[i] & 0x1) != 0 ? 0.25 : 0;
+		float skew = (gs_style[i] & 0x1u) != 0 ? 0.25 : 0;
 		vec4 v01 = vec4(0, gs_dimensions[i].y, 0, 0);
 		vec4 v10 = vec4(gs_dimensions[i].x, 0, 0, 0);
 		vec4 v11 = vec4(gs_dimensions[i].xy, 0, 0);
 
-		fs_rgba = vec4(float((gs_color[i] & 0xff000000) >> 24)/255.0,
-		               float((gs_color[i] & 0x00ff0000) >> 16)/255.0,
-		               float((gs_color[i] & 0x0000ff00) >>  8)/255.0,
-		               float((gs_color[i] & 0x000000ff) >>  0)/255.0);
+		fs_rgba = vec4(float((gs_color[i] & 0xff000000u) >> 24)/255.0,
+		               float((gs_color[i] & 0x00ff0000u) >> 16)/255.0,
+		               float((gs_color[i] & 0x0000ff00u) >>  8)/255.0,
+		               float((gs_color[i] & 0x000000ffu) >>  0)/255.0);
 		fs_font_scale = gs_font_scale[i];
 		fs_weight = mix(-0.05, 0.05, float(gs_weight[i]) / 255.0);
 

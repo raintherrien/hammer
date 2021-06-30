@@ -10,7 +10,7 @@ layout(location=0) out vec4 out_color;
 uniform sampler2DArray font_sampler;
 
 const float spread = 10; // XXX whatever generated with
-const float smoothing = 0.125 / (spread * fs_font_scale);
+float smoothing = 0.125 / (spread * fs_font_scale);
 
 // TODO: Credit, github.com/libgdx/libgdx/wiki/Distance-field-fonts
 void main()
