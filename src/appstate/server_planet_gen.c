@@ -32,6 +32,7 @@ enum planet_stage {
 };
 
 static struct {
+	GLubyte *img_scratch;
 	/*
 	 * This state performs three stages of terrain generation: tectonic,
 	 * climate, and stream graph. The user can flip between rendered world
@@ -40,8 +41,8 @@ static struct {
 	 */
 	enum planet_stage current_stage;
 	enum planet_stage focussed_stage;
-	gui_btn_state        cancel_btn_state;
-	unsigned long        composite_size;
+	gui_btn_state cancel_btn_state;
+	unsigned long composite_size;
 
 	float min_map_zoom;
 	float map_zoom;
@@ -86,10 +87,11 @@ appstate_server_planet_gen_setup(void)
 {
 	appstate_server_planet_gen_frame = DL_TASK_INIT(planet_generation_frame_async);
 
-	server.planet.lithosphere = xmalloc(sizeof(*server.planet.lithosphere));
-	server.planet.climate = xmalloc(sizeof(*server.planet.climate));
-	server.planet.stream = xmalloc(sizeof(*server.planet.stream));
+	server.planet.lithosphere = xcalloc(1, sizeof(*server.planet.lithosphere));
+	server.planet.climate = xcalloc(1, sizeof(*server.planet.climate));
+	server.planet.stream = xcalloc(1, sizeof(*server.planet.stream));
 	lithosphere_create(server.planet.lithosphere, &server.world.opts);
+	server_planet_gen.img_scratch = xmalloc(LITHOSPHERE_AREA * 3 * sizeof(*server_planet_gen.img_scratch));
 
 	server_planet_gen.current_stage = PLANET_STAGE_LITHOSPHERE;
 	server_planet_gen.focussed_stage = PLANET_STAGE_LITHOSPHERE;
@@ -121,6 +123,8 @@ void
 appstate_server_planet_gen_teardown(void)
 {
 	/* TODO: Images never freed, mouse never potentially released */
+	free(server_planet_gen.img_scratch);
+	server_planet_gen.img_scratch = NULL;
 
 	if (server.planet.stream) {
 		if (server_planet_gen.current_stage >= PLANET_STAGE_STREAM)
@@ -184,6 +188,8 @@ planet_generation_lithosphere_frame(void)
 	if (server.planet.lithosphere->generation >= steps) {
 		/* Kick off climate loop */
 		climate_create(server.planet.climate, server.planet.lithosphere);
+		server_planet_gen.img_scratch = xrealloc(server_planet_gen.img_scratch,
+		                                         CLIMATE_AREA * 3 * sizeof(*server_planet_gen.img_scratch));
 		server_planet_gen.current_stage = PLANET_STAGE_CLIMATE;
 		server_planet_gen.focussed_stage = PLANET_STAGE_CLIMATE;
 		return;
@@ -204,6 +210,9 @@ planet_generation_climate_frame(void)
 		                    server.planet.climate,
 		                    server.world.opts.seed,
 		                    server_planet_gen.composite_size);
+		size_t stream_area = server.planet.stream->size * server.planet.stream->size;
+		server_planet_gen.img_scratch = xrealloc(server_planet_gen.img_scratch,
+		                                         stream_area * 3 * sizeof(*server_planet_gen.img_scratch));
 		server_planet_gen.current_stage = PLANET_STAGE_STREAM;
 		server_planet_gen.focussed_stage = PLANET_STAGE_STREAM;
 		return;
@@ -621,14 +630,14 @@ planet_generation_gl_frame(void *_)
 		});
 		gui_container_push(&stack);
 		/* Highlight the region with a white box */
-		gui_line(wr_left, wr_top, 89, 1, 0xffffffff,
-		         wr_right, wr_top, 89, 1, 0xffffffff);
-		gui_line(wr_left, wr_bottom, 89, 1, 0xffffffff,
-		         wr_right, wr_bottom, 89, 1, 0xffffffff);
-		gui_line(wr_left, wr_top, 89, 1, 0xffffffff,
-		         wr_left, wr_bottom, 89, 1, 0xffffffff);
-		gui_line(wr_right, wr_top, 89, 1, 0xffffffff,
-		         wr_right, wr_bottom, 89, 1, 0xffffffff);
+		gui_line(wr_left, wr_top, 9, 1, 0xffffffff,
+		         wr_right, wr_top, 9, 1, 0xffffffff);
+		gui_line(wr_left, wr_bottom, 9, 1, 0xffffffff,
+		         wr_right, wr_bottom, 9, 1, 0xffffffff);
+		gui_line(wr_left, wr_top, 9, 1, 0xffffffff,
+		         wr_left, wr_bottom, 9, 1, 0xffffffff);
+		gui_line(wr_right, wr_top, 9, 1, 0xffffffff,
+		         wr_right, wr_bottom, 9, 1, 0xffffffff);
 		if (window.unhandled_mouse_press[MOUSEBL]) {
 			server_planet_gen.selected_region_x = wrapidx(rl, server_planet_gen.composite_size);
 			server_planet_gen.selected_region_y = wrapidx(rt, server_planet_gen.composite_size);
@@ -652,7 +661,7 @@ static int
 planet_generation_gl_blit_lithosphere_image(void *_)
 {
 	struct lithosphere *l = server.planet.lithosphere;
-	GLubyte *img = xmalloc(LITHOSPHERE_AREA * sizeof(*img) * 3);
+	GLubyte *img = server_planet_gen.img_scratch;
 	/* Blue below sealevel, green to red continent altitude */
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
 		float total_mass = l->mass[i].sediment +
@@ -675,7 +684,6 @@ planet_generation_gl_blit_lithosphere_image(void *_)
 	                    LITHOSPHERE_LEN, LITHOSPHERE_LEN, /* w,h */
 	                    GL_RGB, GL_UNSIGNED_BYTE,
 	                    img);
-	free(img);
 
 	return 0;
 }
@@ -684,7 +692,7 @@ static int
 planet_generation_gl_blit_climate_image(void *_)
 {
 	struct climate *c = server.planet.climate;
-	GLubyte *img = xmalloc(CLIMATE_AREA * sizeof(*img) * 3);
+	GLubyte *img = server_planet_gen.img_scratch;
 	for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
 		float temp = 1 - c->inv_temp[i];
 		float precip = c->precipitation[i];
@@ -699,7 +707,6 @@ planet_generation_gl_blit_climate_image(void *_)
 	                    CLIMATE_LEN, CLIMATE_LEN, /* w,h */
 	                    GL_RGB, GL_UNSIGNED_BYTE,
 	                    img);
-	free(img);
 
 	return 0;
 }
@@ -762,8 +769,8 @@ static int
 planet_generation_gl_blit_stream_image(void *_)
 {
 	struct stream_graph *s = server.planet.stream;
-	size_t area = s->size * s->size;
-	GLubyte *img = xcalloc(area * 3, sizeof(*img));
+	GLubyte *img = server_planet_gen.img_scratch;
+	memset(img, 0, s->size * s->size * 3 * sizeof(*img));
 
 	for (size_t i = 0; i < s->node_count; ++ i) {
 		struct stream_arc *arc = &s->arcs[i];
@@ -802,7 +809,6 @@ planet_generation_gl_blit_stream_image(void *_)
 	                    s->size, s->size, /* w,h */
 	                    GL_RGB, GL_UNSIGNED_BYTE,
 	                    img);
-	free(img);
 
 	return 0;
 }
@@ -811,7 +817,7 @@ static int
 planet_generation_gl_blit_composite_image(void *_)
 {
 	struct stream_graph *s = server.planet.stream;
-	GLubyte *img = xcalloc(s->size * s->size * 3, sizeof(*img));
+	GLubyte *img = server_planet_gen.img_scratch;
 
 	/*
 	 * NOTE: This is *exactly* the same code we use to blit region height
@@ -958,7 +964,6 @@ planet_generation_gl_blit_composite_image(void *_)
 	                    s->size, s->size, /* w,h */
 	                    GL_RGB, GL_UNSIGNED_BYTE,
 	                    img);
-	free(img);
 
 	return 0;
 }
