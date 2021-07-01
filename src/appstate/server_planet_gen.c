@@ -403,7 +403,7 @@ planet_generation_gl_frame(void *_)
 
 	const struct map_opts map_opts = {
 		MAP_OPTS_DEFAULTS,
-		.zoffset = 90, /* background */
+		.zoffset = 10, /* background */
 		.width  = window.width,
 		.height = window.height,
 		.scale_x = server_planet_gen.map_zoom * (LITHOSPHERE_LEN / (float)window.width),

@@ -94,7 +94,7 @@ opengl_init(void)
 
 static void window_draw_frame_timing(void)
 {
-	const float z = 99; /* above everything */
+	const float z = 1; /* above everything */
 	const float graph_height_px = 100;
 	/* Determine longest frame and scale graph */
 	float avg_cpu_ns = 0;
