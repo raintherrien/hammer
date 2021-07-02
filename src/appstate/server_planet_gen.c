@@ -1,48 +1,46 @@
 #include "hammer/appstate.h"
+#include "hammer/appstate/server_planet_gen/planet_gen_iter_async.h"
 #include "hammer/glthread.h"
 #include "hammer/gui.h"
+#include "hammer/math.h"
 #include "hammer/mem.h"
 #include "hammer/server.h"
 #include "hammer/vector.h"
 #include "hammer/window.h"
-#include "hammer/worldgen/biome.h"
 #include "hammer/worldgen/climate.h"
 #include "hammer/worldgen/region.h"
 #include "hammer/worldgen/stream.h"
 #include "hammer/worldgen/tectonic.h"
-#include <float.h>
-#include <string.h>
-
-/*
- * TODO: All of these updates steps should happen asynchronously. This
- * wouldn't be hard with an atomic GLchar[] or two that the render thread
- * checks and swaps out when the update thread has something to display.
- */
 
 #define PROGRESS_STR_MAX_LEN 64
-#define BIOME_TOOLTIP_STR_MAX_LEN 64
 
 dltask appstate_server_planet_gen_frame;
 
-enum planet_stage {
-	PLANET_STAGE_LITHOSPHERE,
-	PLANET_STAGE_CLIMATE,
-	PLANET_STAGE_STREAM,
-	PLANET_STAGE_COMPOSITE,
-};
-
+/*
+ * This appstate performs three stages of terrain generation: tectonic,
+ * climate, and stream graph. The user can flip between rendered world images
+ * of each stage, zoom, pan around, and once generation is complete they
+ * choose a composite region to expand.
+ *
+ * The actual updates are performed asynchronously by planet_gen_iter_async
+ * which means this UI code is not allowed to touch *anything* in the server
+ * global variable besides server.world.opts while the async operation is
+ * running.
+ *
+ * TODO: It's pretty ugly that at this point there's little separation between
+ * "server" and "client", since technically we're generating terrain on the
+ * server, and there would be little benefit for mocking up a client for
+ * something this simple. We just have to be careful not to step on that async
+ * task's feet.
+ */
 static struct {
-	GLubyte *img_scratch;
-	/*
-	 * This state performs three stages of terrain generation: tectonic,
-	 * climate, and stream graph. The user can flip between rendered world
-	 * images of each stage, zoom, and pan around. Eventually they will
-	 * select a region to continue.
-	 */
-	enum planet_stage current_stage;
-	enum planet_stage focussed_stage;
+	/* Async img update */
+	struct planet_gen_iter_async async;
+
+	enum planet_gen_iter_stage last_completed_stage;
+	enum planet_gen_iter_stage focussed_stage;
 	gui_btn_state cancel_btn_state;
-	unsigned long composite_size;
+	unsigned long stream_size;
 
 	float min_map_zoom;
 	float map_zoom;
@@ -64,39 +62,27 @@ static struct {
 	char lithosphere_progress_str[PROGRESS_STR_MAX_LEN];
 	char climate_progress_str[PROGRESS_STR_MAX_LEN];
 	char stream_progress_str[PROGRESS_STR_MAX_LEN];
-	char biome_tooltip_str[BIOME_TOOLTIP_STR_MAX_LEN];
 } server_planet_gen;
 
 static int planet_generation_gl_setup(void *);
 static int planet_generation_gl_frame(void *);
 
-static int planet_generation_gl_blit_lithosphere_image(void *);
-static int planet_generation_gl_blit_climate_image(void *);
-static int planet_generation_gl_blit_stream_image(void *);
-static int planet_generation_gl_blit_composite_image(void *);
+static int planet_generation_gl_blit_complete_image(void *);
 
 static void planet_generation_frame_async(DL_TASK_ARGS);
-
-static void planet_generation_lithosphere_frame(void);
-static void planet_generation_climate_frame(void);
-static void planet_generation_stream_frame(void);
-static void planet_generation_composite_frame(void);
 
 void
 appstate_server_planet_gen_setup(void)
 {
 	appstate_server_planet_gen_frame = DL_TASK_INIT(planet_generation_frame_async);
 
-	server.planet.lithosphere = xcalloc(1, sizeof(*server.planet.lithosphere));
-	server.planet.climate = xcalloc(1, sizeof(*server.planet.climate));
-	server.planet.stream = xcalloc(1, sizeof(*server.planet.stream));
-	lithosphere_create(server.planet.lithosphere, &server.world.opts);
-	server_planet_gen.img_scratch = xmalloc(LITHOSPHERE_AREA * 3 * sizeof(*server_planet_gen.img_scratch));
+	/* Realloced by server_update_async_run as necessary */
+	planet_gen_iter_async_create(&server_planet_gen.async);
 
-	server_planet_gen.current_stage = PLANET_STAGE_LITHOSPHERE;
-	server_planet_gen.focussed_stage = PLANET_STAGE_LITHOSPHERE;
+	server_planet_gen.last_completed_stage = PLANET_STAGE_NONE;
+	server_planet_gen.focussed_stage = PLANET_STAGE_NONE;
 	server_planet_gen.cancel_btn_state = 0;
-	server_planet_gen.composite_size = 1 << (9 + server.world.opts.scale);
+	server_planet_gen.stream_size = world_opts_stream_graph_size(&server.world.opts);
 
 	server_planet_gen.min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
 	                                     (float)window.height / LITHOSPHERE_LEN);
@@ -111,10 +97,21 @@ appstate_server_planet_gen_setup(void)
 	server_planet_gen.mouse_captured = 0;
 	server_planet_gen.paused = 0;
 
-	memset(server_planet_gen.lithosphere_progress_str, 0, PROGRESS_STR_MAX_LEN * sizeof(char));
-	memset(server_planet_gen.climate_progress_str, 0, PROGRESS_STR_MAX_LEN * sizeof(char));
-	memset(server_planet_gen.stream_progress_str, 0, PROGRESS_STR_MAX_LEN * sizeof(char));
-	memset(server_planet_gen.biome_tooltip_str, 0, PROGRESS_STR_MAX_LEN * sizeof(char));
+	/*
+	 * We don't know how many lithosphere steps there are since this is
+	 * user-configurable, but we do know climate and stream graph steps.
+	 */
+	snprintf(server_planet_gen.lithosphere_progress_str,
+	         PROGRESS_STR_MAX_LEN,
+	         "Lithosphere Generation: initializing");
+	snprintf(server_planet_gen.climate_progress_str,
+	         PROGRESS_STR_MAX_LEN,
+	         "Climate Model Generation: 0/%ld",
+	         (long)CLIMATE_GENERATIONS);
+	snprintf(server_planet_gen.stream_progress_str,
+	         PROGRESS_STR_MAX_LEN,
+	         "Stream Graph Generation: 0/%ld",
+	         (long)STREAM_GRAPH_GENERATIONS);
 
 	glthread_execute(planet_generation_gl_setup, NULL);
 }
@@ -122,27 +119,9 @@ appstate_server_planet_gen_setup(void)
 void
 appstate_server_planet_gen_teardown(void)
 {
-	/* TODO: Images never freed, mouse never potentially released */
-	free(server_planet_gen.img_scratch);
-	server_planet_gen.img_scratch = NULL;
-
-	if (server.planet.stream) {
-		if (server_planet_gen.current_stage >= PLANET_STAGE_STREAM)
-			stream_graph_destroy(server.planet.stream);
-		free(server.planet.stream);
-		server.planet.stream = NULL;
-	}
-	if (server.planet.climate) {
-		if (server_planet_gen.current_stage >= PLANET_STAGE_CLIMATE)
-			climate_destroy(server.planet.climate);
-		free(server.planet.climate);
-		server.planet.climate = NULL;
-	}
-	if (server.planet.lithosphere) {
-		lithosphere_destroy(server.planet.lithosphere);
-		free(server.planet.lithosphere);
-		server.planet.lithosphere = NULL;
-	}
+	/* Spinlock waiting for async task to complete */
+	while (server_planet_gen.async.is_running) ;
+	planet_gen_iter_async_destroy(&server_planet_gen.async);
 }
 
 void
@@ -164,90 +143,56 @@ planet_generation_frame_async(DL_TASK_ARGS)
 		return;
 	}
 
-	switch (server_planet_gen.current_stage) {
-	case PLANET_STAGE_LITHOSPHERE:
-		planet_generation_lithosphere_frame();
-		break;
-	case PLANET_STAGE_CLIMATE:
-		planet_generation_climate_frame();
-		break;
-	case PLANET_STAGE_STREAM:
-		planet_generation_stream_frame();
-		break;
-	case PLANET_STAGE_COMPOSITE:
-		planet_generation_composite_frame();
-		break;
-	};
-}
+	/*
+	 * If the async task has completed an image blit it to a texture,
+	 * update labels that depend on the data being modified, and queue the
+	 * next iteration.
+	 */
+	if (!server_planet_gen.async.is_running &&
+	    server_planet_gen.last_completed_stage < PLANET_STAGE_COMPOSITE)
+	{
+		glthread_execute(planet_generation_gl_blit_complete_image, NULL);
 
-static void
-planet_generation_lithosphere_frame(void)
-{
-	size_t steps = server.world.opts.tectonic.generations *
-	                 server.world.opts.tectonic.generation_steps;
-	if (server.planet.lithosphere->generation >= steps) {
-		/* Kick off climate loop */
-		climate_create(server.planet.climate, server.planet.lithosphere);
-		server_planet_gen.img_scratch = xrealloc(server_planet_gen.img_scratch,
-		                                         CLIMATE_AREA * 3 * sizeof(*server_planet_gen.img_scratch));
-		server_planet_gen.current_stage = PLANET_STAGE_CLIMATE;
-		server_planet_gen.focussed_stage = PLANET_STAGE_CLIMATE;
-		return;
+		/* Switch to new stage when available */
+		if (server_planet_gen.last_completed_stage != server_planet_gen.async.last_stage) {
+			server_planet_gen.focussed_stage = server_planet_gen.async.last_stage;
+		}
+		server_planet_gen.last_completed_stage = server_planet_gen.async.last_stage;
+
+		if (server.planet.lithosphere) {
+			snprintf(server_planet_gen.lithosphere_progress_str,
+			         PROGRESS_STR_MAX_LEN,
+			         "Lithosphere Generation: %ld/%ld",
+			         (long)server.planet.lithosphere->generation,
+			         (long)server.world.opts.tectonic.generations *
+			               server.world.opts.tectonic.generation_steps);
+		}
+
+		if (server.planet.climate) {
+			snprintf(server_planet_gen.climate_progress_str,
+			         PROGRESS_STR_MAX_LEN,
+			         "Climate Model Generation: %ld/%ld",
+			         (long)(server.planet.climate ? server.planet.climate->generation : 0),
+			         (long)CLIMATE_GENERATIONS);
+		}
+
+		if (server.planet.stream) {
+			snprintf(server_planet_gen.stream_progress_str,
+			         PROGRESS_STR_MAX_LEN,
+			         "Stream Graph Generation: %ld/%ld",
+			         (long)(server.planet.stream ? server.planet.stream->generation : 0),
+			         (long)STREAM_GRAPH_GENERATIONS);
+		}
+
+		if (server_planet_gen.async.can_resume && !server_planet_gen.paused)
+			planet_gen_iter_async_resume(&server_planet_gen.async);
 	}
 
-	if (!server_planet_gen.paused) {
-		lithosphere_update(server.planet.lithosphere, &server.world.opts);
-		glthread_execute(planet_generation_gl_blit_lithosphere_image, NULL);
-	}
-}
-
-static void
-planet_generation_climate_frame(void)
-{
-	if (server.planet.climate->generation >= CLIMATE_GENERATIONS) {
-		/* Kick off stream loop */
-		stream_graph_create(server.planet.stream,
-		                    server.planet.climate,
-		                    server.world.opts.seed,
-		                    server_planet_gen.composite_size);
-		size_t stream_area = server.planet.stream->size * server.planet.stream->size;
-		server_planet_gen.img_scratch = xrealloc(server_planet_gen.img_scratch,
-		                                         stream_area * 3 * sizeof(*server_planet_gen.img_scratch));
-		server_planet_gen.current_stage = PLANET_STAGE_STREAM;
-		server_planet_gen.focussed_stage = PLANET_STAGE_STREAM;
-		return;
-	}
-
-	if (!server_planet_gen.paused) {
-		climate_update(server.planet.climate);
-		glthread_execute(planet_generation_gl_blit_climate_image, NULL);
-	}
-}
-
-static void
-planet_generation_stream_frame(void)
-{
-	if (server.planet.stream->generation >= STREAM_GRAPH_GENERATIONS) {
-		/* Kick off composite loop */
-		glthread_execute(planet_generation_gl_blit_composite_image, NULL);
-		server_planet_gen.current_stage = PLANET_STAGE_COMPOSITE;
-		server_planet_gen.focussed_stage = PLANET_STAGE_COMPOSITE;
-		return;
-	}
-
-	if (!server_planet_gen.paused) {
-		stream_graph_update(server.planet.stream);
-		glthread_execute(planet_generation_gl_blit_stream_image, NULL);
-	}
-}
-
-static void
-planet_generation_composite_frame(void)
-{
-	if (server_planet_gen.selected_region_x != FLT_MAX &&
+	/* Kick off local region generation */
+	if (!server_planet_gen.async.is_running &&
+	    server_planet_gen.selected_region_x != FLT_MAX &&
 	    server_planet_gen.selected_region_y != FLT_MAX)
 	{
-		/* Kick off local region generation */
 		server.world.region_stream_coord_left = server_planet_gen.selected_region_x;
 		server.world.region_stream_coord_top  = server_planet_gen.selected_region_y;
 		server.world.region_size_mag2 = server_planet_gen.selected_region_size_mag2;
@@ -256,74 +201,41 @@ planet_generation_composite_frame(void)
 	}
 }
 
+struct spg_map_tex_params {
+	GLuint *texture_ptr;
+	GLsizei width_height;
+};
+
 static int
 planet_generation_gl_setup(void *_)
 {
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
 
-	glGenTextures(1, &server_planet_gen.lithosphere_img);
-	glBindTexture(GL_TEXTURE_2D, server_planet_gen.lithosphere_img);
-	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
-	                            GL_RGB8,
-	                            LITHOSPHERE_LEN, LITHOSPHERE_LEN,
-	                            0, /* border */
-	                            GL_RGB,
-	                            GL_UNSIGNED_BYTE,
-	                            NULL);
-	glTextureParameteri(server_planet_gen.lithosphere_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(server_planet_gen.lithosphere_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(server_planet_gen.lithosphere_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(server_planet_gen.lithosphere_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTextureParameteri(server_planet_gen.lithosphere_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glGenerateTextureMipmap(server_planet_gen.lithosphere_img);
+	struct spg_map_tex_params map_tex_params[4] = {
+		{ &server_planet_gen.lithosphere_img, LITHOSPHERE_LEN },
+		{ &server_planet_gen.climate_img,     CLIMATE_LEN },
+		{ &server_planet_gen.stream_img,      server_planet_gen.stream_size },
+		{ &server_planet_gen.composite_img,   server_planet_gen.stream_size }
+	};
 
-	glGenTextures(1, &server_planet_gen.climate_img);
-	glBindTexture(GL_TEXTURE_2D, server_planet_gen.climate_img);
-	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
-	                            GL_RGB8,
-	                            CLIMATE_LEN, CLIMATE_LEN,
-	                            0, /* border */
-	                            GL_RGB,
-	                            GL_UNSIGNED_BYTE,
-	                            NULL);
-	glTextureParameteri(server_planet_gen.climate_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(server_planet_gen.climate_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(server_planet_gen.climate_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(server_planet_gen.climate_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTextureParameteri(server_planet_gen.climate_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glGenerateTextureMipmap(server_planet_gen.climate_img);
-
-	glGenTextures(1, &server_planet_gen.stream_img);
-	glBindTexture(GL_TEXTURE_2D, server_planet_gen.stream_img);
-	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
-	                            GL_RGB8,
-	                            server_planet_gen.composite_size, server_planet_gen.composite_size,
-	                            0, /* border */
-	                            GL_RGB,
-	                            GL_UNSIGNED_BYTE,
-	                            NULL);
-	glTextureParameteri(server_planet_gen.stream_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(server_planet_gen.stream_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(server_planet_gen.stream_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(server_planet_gen.stream_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTextureParameteri(server_planet_gen.stream_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glGenerateTextureMipmap(server_planet_gen.stream_img);
-
-	glGenTextures(1, &server_planet_gen.composite_img);
-	glBindTexture(GL_TEXTURE_2D, server_planet_gen.composite_img);
-	glTexImage2D(GL_TEXTURE_2D, 0, /* level */
-	                            GL_RGB8,
-	                            server_planet_gen.composite_size, server_planet_gen.composite_size,
-	                            0, /* border */
-	                            GL_RGB,
-	                            GL_UNSIGNED_BYTE,
-	                            NULL);
-	glTextureParameteri(server_planet_gen.composite_img, GL_TEXTURE_MAX_LEVEL, 0);
-	glTextureParameteri(server_planet_gen.composite_img, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTextureParameteri(server_planet_gen.composite_img, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTextureParameteri(server_planet_gen.composite_img, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTextureParameteri(server_planet_gen.composite_img, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glGenerateTextureMipmap(server_planet_gen.composite_img);
+	for (size_t i = 0; i < 4; ++ i) {
+		struct spg_map_tex_params t = map_tex_params[i];
+		glGenTextures(1, t.texture_ptr);
+		glBindTexture(GL_TEXTURE_2D, *t.texture_ptr);
+		glTexImage2D(GL_TEXTURE_2D, 0, /* level */
+					    GL_RGB8,
+					    t.width_height, t.width_height,
+					    0, /* border */
+					    GL_RGB,
+					    GL_UNSIGNED_BYTE,
+					    NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
 
 	return 0;
 }
@@ -332,7 +244,7 @@ static int
 planet_generation_gl_frame(void *_)
 {
 	server_planet_gen.min_map_zoom = MIN((float)window.width / LITHOSPHERE_LEN,
-	                       (float)window.height / LITHOSPHERE_LEN);
+	                                     (float)window.height / LITHOSPHERE_LEN);
 	server_planet_gen.map_zoom = MAX(server_planet_gen.min_map_zoom, server_planet_gen.map_zoom);
 
 	if (window.scroll && (window.keymod & KMOD_LCTRL ||
@@ -421,25 +333,6 @@ planet_generation_gl_frame(void *_)
 		.tran_y = server_planet_gen.map_tran_y
 	};
 
-	snprintf(server_planet_gen.lithosphere_progress_str,
-	         PROGRESS_STR_MAX_LEN,
-	         "Lithosphere Generation: %ld/%ld",
-	         (long)server.planet.lithosphere->generation,
-	         (long)server.world.opts.tectonic.generations *
-	               server.world.opts.tectonic.generation_steps);
-
-	snprintf(server_planet_gen.climate_progress_str,
-	         PROGRESS_STR_MAX_LEN,
-	         "Climate Model Generation: %ld/%ld",
-	         (long)(server.planet.climate ? server.planet.climate->generation : 0),
-	         (long)CLIMATE_GENERATIONS);
-
-	snprintf(server_planet_gen.stream_progress_str,
-	         PROGRESS_STR_MAX_LEN,
-	         "Stream Graph Generation: %ld/%ld",
-	         (long)(server.planet.stream ? server.planet.stream->generation : 0),
-	         (long)STREAM_GRAPH_GENERATIONS);
-
 	gui_container stack;
 	gui_stack_init(&stack, (struct stack_opts) {
 		STACK_OPTS_DEFAULTS,
@@ -469,34 +362,11 @@ planet_generation_gl_frame(void *_)
 	gui_stack_break(&stack);
 	server_planet_gen.cancel_btn_state = gui_btn(server_planet_gen.cancel_btn_state, "Cancel", btn_opts);
 	gui_stack_break(&stack);
-
-	/*
-	 * Show the user what biome they're hovering over on the climate image.
-	 */
-	if (server_planet_gen.focussed_stage == PLANET_STAGE_CLIMATE &&
-	    window.mouse_x >= 0 && window.mouse_y >= 0 &&
-	    window.mouse_x < window.width && window.mouse_y < window.height)
-	{
-		size_t imgx = window.mouse_x / server_planet_gen.map_zoom + server_planet_gen.map_tran_x * CLIMATE_LEN;
-		size_t imgy = window.mouse_y / server_planet_gen.map_zoom + server_planet_gen.map_tran_y * CLIMATE_LEN;
-		size_t i = wrapidx(imgy, CLIMATE_LEN) * CLIMATE_LEN + wrapidx(imgx, CLIMATE_LEN);
-		float temp = 1 - server.planet.climate->inv_temp[i];
-		float precip = server.planet.climate->precipitation[i];
-		float elev = server.planet.climate->uplift[i];
-		enum biome b = biome_class(elev, temp, precip);
-		snprintf(server_planet_gen.biome_tooltip_str,
-		         BIOME_TOOLTIP_STR_MAX_LEN,
-		         "Hovering over: %s",
-		         biome_name[b]);
-		gui_text(server_planet_gen.biome_tooltip_str, normal_text_opts);
-		gui_stack_break(&stack);
-	}
-
 	gui_container_pop();
 
 	if (server_planet_gen.focussed_stage == PLANET_STAGE_COMPOSITE) {
 		gui_map(server_planet_gen.composite_img, map_opts);
-	} else if (server_planet_gen.current_stage == PLANET_STAGE_COMPOSITE) {
+	} else if (server_planet_gen.last_completed_stage >= PLANET_STAGE_COMPOSITE) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
 			.xoffset = window.width - border_padding - 256,
@@ -520,7 +390,7 @@ planet_generation_gl_frame(void *_)
 
 	if (server_planet_gen.focussed_stage == PLANET_STAGE_STREAM) {
 		gui_map(server_planet_gen.stream_img, map_opts);
-	} else if (server_planet_gen.current_stage >= PLANET_STAGE_STREAM) {
+	} else if (server_planet_gen.last_completed_stage >= PLANET_STAGE_STREAM) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
 			.xoffset = window.width - border_padding - 192,
@@ -544,7 +414,7 @@ planet_generation_gl_frame(void *_)
 
 	if (server_planet_gen.focussed_stage == PLANET_STAGE_CLIMATE) {
 		gui_map(server_planet_gen.climate_img, map_opts);
-	} else if (server_planet_gen.current_stage >= PLANET_STAGE_CLIMATE) {
+	} else if (server_planet_gen.last_completed_stage >= PLANET_STAGE_CLIMATE) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
 			.xoffset = window.width - border_padding - 128,
@@ -568,7 +438,7 @@ planet_generation_gl_frame(void *_)
 
 	if (server_planet_gen.focussed_stage == PLANET_STAGE_LITHOSPHERE) {
 		gui_map(server_planet_gen.lithosphere_img, map_opts);
-	} else if (server_planet_gen.current_stage >= PLANET_STAGE_LITHOSPHERE) {
+	} else if (server_planet_gen.last_completed_stage >= PLANET_STAGE_LITHOSPHERE) {
 		const struct map_opts tab_opts = {
 			MAP_OPTS_DEFAULTS,
 			.xoffset = window.width - border_padding - 64,
@@ -595,17 +465,19 @@ planet_generation_gl_frame(void *_)
 	 * selection.
 	 */
 	gui_container_push(&stack);
-	if (server_planet_gen.focussed_stage == PLANET_STAGE_COMPOSITE) {
+	if (server_planet_gen.focussed_stage == PLANET_STAGE_COMPOSITE &&
+	    !server_planet_gen.mouse_captured)
+	{
 		gui_text("Left click to select region", normal_text_opts);
 		gui_stack_break(&stack);
 		gui_text("Ctrl+scroll to resize region", normal_text_opts);
 		gui_stack_break(&stack);
 		/* Determine the region highlighted */
 		float stream_region_size = STREAM_REGION_SIZE_MIN * (1 << server_planet_gen.selected_region_size_mag2);
-		float scale = LITHOSPHERE_LEN / (float)server_planet_gen.composite_size;
+		float scale = LITHOSPHERE_LEN / (float)server_planet_gen.stream_size;
 		float zoom = server_planet_gen.map_zoom * scale;
-		float tx = server_planet_gen.map_tran_x * server_planet_gen.composite_size;
-		float ty = server_planet_gen.map_tran_y * server_planet_gen.composite_size;
+		float tx = server_planet_gen.map_tran_x * server_planet_gen.stream_size;
+		float ty = server_planet_gen.map_tran_y * server_planet_gen.stream_size;
 		/* world coords */
 		float rl = window.mouse_x / zoom + tx - stream_region_size / 2;
 		float rt = window.mouse_y / zoom + ty - stream_region_size / 2;
@@ -639,8 +511,8 @@ planet_generation_gl_frame(void *_)
 		gui_line(wr_right, wr_top, 9, 1, 0xffffffff,
 		         wr_right, wr_bottom, 9, 1, 0xffffffff);
 		if (window.unhandled_mouse_press[MOUSEBL]) {
-			server_planet_gen.selected_region_x = wrapidx(rl, server_planet_gen.composite_size);
-			server_planet_gen.selected_region_y = wrapidx(rt, server_planet_gen.composite_size);
+			server_planet_gen.selected_region_x = wrapidx(rl, server_planet_gen.stream_size);
+			server_planet_gen.selected_region_y = wrapidx(rt, server_planet_gen.stream_size);
 		}
 	}
 	gui_container_pop();
@@ -658,312 +530,37 @@ planet_generation_gl_frame(void *_)
 }
 
 static int
-planet_generation_gl_blit_lithosphere_image(void *_)
+planet_generation_gl_blit_complete_image(void *_)
 {
-	struct lithosphere *l = server.planet.lithosphere;
-	GLubyte *img = server_planet_gen.img_scratch;
-	/* Blue below sealevel, green to red continent altitude */
-	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
-		float total_mass = l->mass[i].sediment +
-		                   l->mass[i].metamorphic +
-		                   l->mass[i].igneous;
-		if (total_mass > TECTONIC_CONTINENT_MASS) {
-			float h = total_mass - TECTONIC_CONTINENT_MASS;
-			img[i*3+0] = 30 + 95 * MIN(4,h) / 3;
-			img[i*3+1] = 125;
-			img[i*3+2] = 30;
-		} else {
-			img[i*3+0] = 50;
-			img[i*3+1] = 50 + 100 * total_mass / TECTONIC_CONTINENT_MASS;
-			img[i*3+2] = 168;
-		}
+	GLuint destination;
+	switch (server_planet_gen.async.last_stage) {
+	case PLANET_STAGE_NONE:
+		return 0; /* DO NOT BLIT ANYTHING! */
+
+	case PLANET_STAGE_LITHOSPHERE:
+		destination = server_planet_gen.lithosphere_img;
+		break;
+
+	case PLANET_STAGE_CLIMATE:
+		destination = server_planet_gen.climate_img;
+		break;
+
+	case PLANET_STAGE_STREAM:
+		destination = server_planet_gen.stream_img;
+		break;
+
+	case PLANET_STAGE_COMPOSITE:
+		destination = server_planet_gen.composite_img;
+		break;
 	}
-	glTextureSubImage2D(server_planet_gen.lithosphere_img,
+
+	glTextureSubImage2D(destination,
 	                    0, /* level */
 	                    0, 0, /* x,y offset */
-	                    LITHOSPHERE_LEN, LITHOSPHERE_LEN, /* w,h */
+	                    server_planet_gen.async.iteration_render_width_height,
+	                    server_planet_gen.async.iteration_render_width_height,
 	                    GL_RGB, GL_UNSIGNED_BYTE,
-	                    img);
-
-	return 0;
-}
-
-static int
-planet_generation_gl_blit_climate_image(void *_)
-{
-	struct climate *c = server.planet.climate;
-	GLubyte *img = server_planet_gen.img_scratch;
-	for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
-		float temp = 1 - c->inv_temp[i];
-		float precip = c->precipitation[i];
-		float elev = c->uplift[i];
-		enum biome b = biome_class(elev, temp, precip);
-		memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
-	}
-
-	glTextureSubImage2D(server_planet_gen.climate_img,
-	                    0, /* level */
-	                    0, 0, /* x,y offset */
-	                    CLIMATE_LEN, CLIMATE_LEN, /* w,h */
-	                    GL_RGB, GL_UNSIGNED_BYTE,
-	                    img);
-
-	return 0;
-}
-
-static void
-putline(GLubyte *rgb, unsigned size,
-        float r, float g, float b, float alpha,
-        long x0, long y0, long x1, long y1)
-{
-	/* Bresenham's line algorithm */
-	long dx = +labs(x1 - x0);
-	long dy = -labs(y1 - y0);
-	long sx = x0 < x1 ? 1 : -1;
-	long sy = y0 < y1 ? 1 : -1;
-	long de = dx + dy;
-	long e2 = 0; /* Accumulate error */
-
-	for(;;) {
-		/* fast wrap since size is power of two */
-		long wx = (x0 + size) & (size - 1);
-		long wy = (y0 + size) & (size - 1);
-		size_t i = 3 * (wy * size + wx);
-		rgb[i+0] = rgb[i+0] + (r - rgb[i+0]) * alpha;
-		rgb[i+1] = rgb[i+1] + (g - rgb[i+1]) * alpha;
-		rgb[i+2] = rgb[i+2] + (b - rgb[i+2]) * alpha;
-		if (x0 == x1 && y0 == y1)
-			break;
-		e2 = 2 * de;
-		if (e2 >= dy) { de += dy; x0 += sx; }
-		if (e2 <= dx) { de += dx; y0 += sy; }
-	}
-}
-
-static void
-swizzle(uint32_t i, GLubyte *rgb)
-{
-	/*
-	 * Very wonky RGB construction from the lower 12 bits of index
-	 */
-	float r = (((unsigned)i & (1<< 0))>> 0) +
-	          (((unsigned)i & (1<< 3))>> 3) +
-	          (((unsigned)i & (1<< 6))>> 6) +
-	          (((unsigned)i & (1<< 9))>> 9);
-
-	float g = (((unsigned)i & (1<< 1))>> 1) +
-	          (((unsigned)i & (1<< 4))>> 4) +
-	          (((unsigned)i & (1<< 7))>> 7) +
-	          (((unsigned)i & (1<<10))>>10);
-
-	float b = (((unsigned)i & (1<< 2))>> 2) +
-	          (((unsigned)i & (1<< 5))>> 5) +
-	          (((unsigned)i & (1<< 8))>> 8) +
-	          (((unsigned)i & (1<<11))>>11);
-	rgb[0] = (GLubyte)lroundf(255 * r / 4);
-	rgb[1] = (GLubyte)lroundf(255 * g / 4);
-	rgb[2] = (GLubyte)lroundf(255 * b / 4);
-}
-
-static int
-planet_generation_gl_blit_stream_image(void *_)
-{
-	struct stream_graph *s = server.planet.stream;
-	GLubyte *img = server_planet_gen.img_scratch;
-	memset(img, 0, s->size * s->size * 3 * sizeof(*img));
-
-	for (size_t i = 0; i < s->node_count; ++ i) {
-		struct stream_arc *arc = &s->arcs[i];
-		if (arc->receiver >= s->node_count)
-			continue;
-		struct stream_node *src = &s->nodes[i];
-		struct stream_node *dst = &s->nodes[arc->receiver];
-		float srcx = src->x;
-		float srcy = src->y;
-		float dstx = dst->x;
-		float dsty = dst->y;
-		float deltax = fabsf(srcx - dstx);
-		float deltay = fabsf(srcy - dsty);
-		/* Wrapping hack to keep lines from crossing image */
-		int wrapx = deltax > (float)s->size - deltax;
-		int wrapy = deltay > (float)s->size - deltay;
-		if (wrapx && dstx > srcx)
-			srcx += s->size;
-		else if (wrapx && dstx < srcx)
-			dstx += s->size;
-		if (wrapy && dsty > srcy)
-			srcy += s->size;
-		else if (wrapy && dsty < srcy)
-			dsty += s->size;
-		GLubyte c[3];
-		swizzle(src->tree, c);
-		putline(img, s->size,
-		        c[0], c[1], c[2], 1.0f,
-		        srcx, srcy,
-		        dstx, dsty);
-	}
-
-	glTextureSubImage2D(server_planet_gen.stream_img,
-	                    0, /* level */
-	                    0, 0, /* x,y offset */
-	                    s->size, s->size, /* w,h */
-	                    GL_RGB, GL_UNSIGNED_BYTE,
-	                    img);
-
-	return 0;
-}
-
-static int
-planet_generation_gl_blit_composite_image(void *_)
-{
-	struct stream_graph *s = server.planet.stream;
-	GLubyte *img = server_planet_gen.img_scratch;
-
-	/*
-	 * NOTE: This is *exactly* the same code we use to blit region height
-	 * in worldgen/region.c
-	 */
-	size_t tri_count = vector_size(s->tris);
-	const float cs = server_planet_gen.composite_size / CLIMATE_LEN;
-	for (size_t ti = 0; ti < tri_count; ++ ti) {
-		struct stream_tri *tri = &s->tris[ti];
-		struct stream_node n[3] = {
-			s->nodes[tri->a],
-			s->nodes[tri->b],
-			s->nodes[tri->c]
-		};
-		/* Determine lake height of triangle */
-		float max_lake = 0;
-		for (size_t i = 0; i < 3; ++ i)
-			max_lake = MAX(max_lake, s->trees[n[i].tree].pass_to_receiver);
-		/*
-		 * In order to draw triangles that straddle the map border we
-		 * need to project those positions either negative, or beyond
-		 * the bounds of the map before calculating the bounding box
-		 * of the triangle.
-		 *
-		 * Two points on a triangle should never be further away than
-		 * wrap_delta. If they are, reproject the third point by
-		 * adding or subtracting the size of the stream graph.
-		 */
-		const float wrap_delta = 512;
-		#define NORMALIZE_NODE(N,A) do {                             \
-			float d1 = n[N].A - n[(N+1)%3].A;                    \
-			float d2 = n[N].A - n[(N+2)%3].A;                    \
-			if (fabsf(d1) > wrap_delta && fabsf(d2) > wrap_delta)\
-				n[N].A -= s->size * signf(d1);               \
-		} while (0)
-		NORMALIZE_NODE(0, x);
-		NORMALIZE_NODE(0, y);
-		NORMALIZE_NODE(1, x);
-		NORMALIZE_NODE(1, y);
-		NORMALIZE_NODE(2, x);
-		NORMALIZE_NODE(2, y);
-		#undef NORMALIZE_NODE
-		long l = floorf(MIN(n[0].x, MIN(n[1].x, n[2].x)));
-		long r =  ceilf(MAX(n[0].x, MAX(n[1].x, n[2].x)));
-		long t = floorf(MIN(n[0].y, MIN(n[1].y, n[2].y)));
-		long b =  ceilf(MAX(n[0].y, MAX(n[1].y, n[2].y)));
-		/* "raw" coordinates may exceed map bounds */
-		for (long ry = t; ry <= b; ++ ry)
-		for (long rx = l; rx <= r; ++ rx) {
-			long wy = STREAM_WRAP(s, ry);
-			long wx = STREAM_WRAP(s, rx);
-			float w[3] = { 0, 0, 0 };
-			stream_node_barycentric_weights(&n[0], &n[1], &n[2], w, rx, ry);
-			if (w[0] < 0 || w[1] < 0 || w[2] < 0)
-				continue;
-			size_t i = wy * s->size + wx;
-			float temp = 1 - lerp_climate_layer(server.planet.climate->inv_temp, wx, wy, cs);
-			float precip = lerp_climate_layer(server.planet.climate->precipitation, wx, wy, cs);
-			float elev = n[0].height * w[0] + n[1].height * w[1] + n[2].height * w[2];
-			enum biome b = biome_class(elev, temp, precip);
-			if (elev < max_lake)
-				b = BIOME_OCEAN;
-			memcpy(&img[i*3], biome_color[b], sizeof(GLubyte)*3);
-			float shading;
-			/* Very basic diffuse factor [0.25,1] */
-			{
-				/* diagonal 45 degrees and down */
-				const float lightdir[3] = {
-					-1 * +0.57735026919f,
-					-1 * +0.57735026919f,
-					-1 * -0.57735026919f
-				};
-				float normal[3];
-				float a[3] = {
-					n[2].x - n[1].x,
-					n[2].y - n[1].y,
-					n[2].height - n[1].height
-				};
-				float b[3] = {
-					n[1].x - n[0].x,
-					n[1].y - n[0].y,
-					n[1].height - n[0].height
-				};
-				normal[0] = a[1] * b[2] - a[2] * b[1];
-				normal[1] = a[2] * b[0] - a[0] * b[2];
-				normal[2] = a[0] * b[1] - a[1] * b[0];
-				float imag = 1 / sqrtf(normal[0] * normal[0] +
-				                       normal[1] * normal[1] +
-				                       normal[2] * normal[2]);
-				normal[0] *= imag;
-				normal[1] *= imag;
-				normal[2] *= imag;
-				shading = normal[0] * lightdir[0] +
-				          normal[1] * lightdir[1] +
-				          normal[2] * lightdir[2];
-				shading = shading / (2 / 0.75f) + 0.625f;
-			}
-			img[i*3+0] *= shading;
-			img[i*3+1] *= shading;
-			img[i*3+2] *= shading;
-		}
-	}
-
-	for (size_t i = 0; i < s->node_count; ++ i) {
-		struct stream_arc *arc = &s->arcs[i];
-		struct stream_node *src = &s->nodes[i];
-
-		/* Do not render in ocean or lake */
-		if (arc->receiver >= s->node_count ||
-		    src->height < TECTONIC_CONTINENT_MASS ||
-		    src->height < s->trees[src->tree].pass_to_receiver)
-			continue;
-
-		struct stream_node *dst = &s->nodes[arc->receiver];
-		float srcx = src->x;
-		float srcy = src->y;
-		float dstx = dst->x;
-		float dsty = dst->y;
-		float deltax = fabsf(srcx - dstx);
-		float deltay = fabsf(srcy - dsty);
-		/* Wrapping hack to keep lines from crossing image */
-		int wrapx = deltax > (float)s->size - deltax;
-		int wrapy = deltay > (float)s->size - deltay;
-		if (wrapx && dstx > srcx)
-			srcx += s->size;
-		else if (wrapx && dstx < srcx)
-			dstx += s->size;
-		if (wrapy && dsty > srcy)
-			srcy += s->size;
-		else if (wrapy && dsty < srcy)
-			dsty += s->size;
-		putline(img, s->size,
-		        biome_color[BIOME_OCEAN][0],
-		        biome_color[BIOME_OCEAN][1],
-		        biome_color[BIOME_OCEAN][2],
-		        CLAMP(src->drainage / 10000.0f, 0, 1),
-		        srcx, srcy,
-		        dstx, dsty);
-	}
-
-	glTextureSubImage2D(server_planet_gen.composite_img,
-	                    0, /* level */
-	                    0, 0, /* x,y offset */
-	                    s->size, s->size, /* w,h */
-	                    GL_RGB, GL_UNSIGNED_BYTE,
-	                    img);
+	                    server_planet_gen.async.iteration_render);
 
 	return 0;
 }

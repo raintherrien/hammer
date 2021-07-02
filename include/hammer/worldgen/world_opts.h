@@ -3,7 +3,7 @@
 
 struct world_opts {
 	unsigned long long seed;
-	unsigned scale;
+	unsigned           scale;
 	struct {
 		/*
 		 * Collision and subduction xfer factors define how much mass
@@ -77,5 +77,11 @@ struct world_opts {
 		unsigned rift_ticks;
 	} tectonic;
 };
+
+static inline unsigned long
+world_opts_stream_graph_size(const struct world_opts *opts)
+{
+	return 1 << (9 + opts->scale);
+}
 
 #endif /* HAMMER_WORLDGEN_WORLD_OPTS_H_ */

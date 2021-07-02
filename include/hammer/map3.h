@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* TODO: benchmark performance of a generic map with hash/eq fn pointers */
+
 #define MAP3_NIL_HASH UINT64_MAX
 
 /* typedef for passing a compound literal key like (map3_key) { i, j, k } */

@@ -36,6 +36,7 @@ add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMME
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/client.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/server_config.c
+                   ${PROJECT_SOURCE_DIR}/src/appstate/server_planet_gen/planet_gen_iter_async.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/server_planet_gen.c
                    ${PROJECT_SOURCE_DIR}/src/appstate/server_region_gen.c
                    ${PROJECT_SOURCE_DIR}/src/client/chunkmesh.c
