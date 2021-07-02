@@ -22,6 +22,12 @@ struct rtargs {
 	 * Useful for limiting hammer to only a few cores.
 	 */
 	unsigned long tc;
+
+	/*
+	 * server is true only if specified, otherwise launch in client mode
+	 * with the full GUI.
+	 */
+	int server;
 };
 
 int parse_args(struct rtargs *, int argc, char **argv);

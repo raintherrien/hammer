@@ -20,6 +20,7 @@ print_help(void)
 	printf("Usage: hammer [options]\n"
 	       "Options:\n"
 	       "  -h, --help     Print help and exit\n"
+	       "  -s, --server   Launch as a dedicated server without any GUI\n"
 	       "      --tc       Specify the number of threads to spawn (default: numer of system threads)\n"
 	       "  -v, --version  Print version and exit\n");
 }
@@ -59,7 +60,8 @@ int
 parse_args(struct rtargs *args, int argc, char **argv)
 {
 	/* Default values */
-	args->tc   = system_threads();
+	args->server = 0;
+	args->tc = system_threads();
 
 	for (int i = 1; i < argc; ++ i) {
 		if (!argv[i])
@@ -73,6 +75,13 @@ parse_args(struct rtargs *args, int argc, char **argv)
 			print_version();
 			print_help();
 			return HAMMER_E_EXIT;
+		}
+
+		/* -s, --server */
+		else if (strcmp(opt, "-s") == 0 ||
+		         strcmp(opt, "--server") == 0)
+		{
+			args->server = 1;
 		}
 
 		/* --tc */

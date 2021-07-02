@@ -53,6 +53,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/client.c
                    ${PROJECT_SOURCE_DIR}/src/appstate.c
                    ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
                    ${PROJECT_SOURCE_DIR}/src/cli.c
+                   ${PROJECT_SOURCE_DIR}/src/client.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
                    ${PROJECT_SOURCE_DIR}/src/file.c
                    ${PROJECT_SOURCE_DIR}/src/glsl.c

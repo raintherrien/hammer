@@ -1,18 +1,16 @@
 #include "hammer/cli.h"
 #include "hammer/error.h"
-#include "hammer/appstate.h"
-#include "hammer/glthread.h"
-#include <deadlock/dl.h>
-#include <float.h>
-#include <stdio.h>
 #include <stdlib.h>
+
+int client_main(struct rtargs);
+int server_main(struct rtargs);
 
 int
 main(int argc, char **argv)
 {
 	/* Parse runtime args */
-	struct rtargs rtargs;
-	switch (parse_args(&rtargs, argc, argv)) {
+	struct rtargs args;
+	switch (parse_args(&args, argc, argv)) {
 	case 0:             break;
 	case HAMMER_E_EXIT: return EXIT_SUCCESS;
 	default:
@@ -20,12 +18,5 @@ main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	glthread_create();
-
-	if (dlmainex(appstate_runner(), NULL, NULL, rtargs.tc))
-		xperror("Error creating deadlock scheduler");
-
-	glthread_destroy();
-
-	return EXIT_SUCCESS;
+	return args.server ? server_main(args) : client_main(args);
 }

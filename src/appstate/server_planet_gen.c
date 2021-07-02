@@ -223,12 +223,12 @@ planet_generation_gl_setup(void *_)
 		glGenTextures(1, t.texture_ptr);
 		glBindTexture(GL_TEXTURE_2D, *t.texture_ptr);
 		glTexImage2D(GL_TEXTURE_2D, 0, /* level */
-					    GL_RGB8,
-					    t.width_height, t.width_height,
-					    0, /* border */
-					    GL_RGB,
-					    GL_UNSIGNED_BYTE,
-					    NULL);
+		             GL_RGB8,
+		             t.width_height, t.width_height,
+		             0, /* border */
+		             GL_RGB,
+		             GL_UNSIGNED_BYTE,
+		             NULL);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

@@ -1,3 +1,11 @@
-#include "hammer/server.h"
+#include "hammer/cli.h"
+#include <stdio.h>
+#include <stdlib.h>
 
-struct server server;
+int
+server_main(struct rtargs args)
+{
+	printf("SERVER\n");
+
+	return EXIT_SUCCESS;
+}
