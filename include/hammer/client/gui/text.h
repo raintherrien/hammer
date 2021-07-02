@@ -1,7 +1,7 @@
-#ifndef HAMMER_GUI_TEXT_H_
-#define HAMMER_GUI_TEXT_H_
+#ifndef HAMMER_CLIENT_GUI_TEXT_H_
+#define HAMMER_CLIENT_GUI_TEXT_H_
 
-#include "hammer/gui.h"
+#include "hammer/client/gui.h"
 
 struct gui_text_vert {
 	GLfloat position[3];
@@ -43,4 +43,4 @@ void gui_text_frame_create(struct gui_text_renderer *, struct gui_text_frame *);
 void gui_text_frame_destroy(struct gui_text_frame *);
 void gui_text_render(struct gui_text_renderer *, struct gui_text_frame *);
 
-#endif /* HAMMER_GUI_TEXT_H_ */
+#endif /* HAMMER_CLIENT_GUI_TEXT_H_ */

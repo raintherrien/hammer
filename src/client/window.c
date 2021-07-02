@@ -1,4 +1,4 @@
-#include "hammer/window.h"
+#include "hammer/client/window.h"
 #include "hammer/error.h"
 #include "hammer/time.h"
 #include "hammer/vector.h"

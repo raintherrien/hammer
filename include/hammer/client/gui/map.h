@@ -1,7 +1,7 @@
-#ifndef HAMMER_GUI_MAP_H_
-#define HAMMER_GUI_MAP_H_
+#ifndef HAMMER_CLIENT_GUI_MAP_H_
+#define HAMMER_CLIENT_GUI_MAP_H_
 
-#include "hammer/gui.h"
+#include "hammer/client/gui.h"
 
 struct gui_map_renderer {
 	GLuint shader;
@@ -20,4 +20,4 @@ struct gui_map_renderer {
 void gui_map_renderer_create(struct gui_map_renderer *);
 void gui_map_renderer_destroy(struct gui_map_renderer *);
 
-#endif /* HAMMER_GUI_MAP_H_ */
+#endif /* HAMMER_CLIENT_GUI_MAP_H_ */

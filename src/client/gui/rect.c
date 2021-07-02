@@ -1,9 +1,9 @@
-#include "hammer/gui/rect.h"
-#include "hammer/gui.h"
+#include "hammer/client/glsl.h"
+#include "hammer/client/gui.h"
+#include "hammer/client/gui/rect.h"
+#include "hammer/client/window.h"
 #include "hammer/error.h"
-#include "hammer/glsl.h"
 #include "hammer/image.h"
-#include "hammer/window.h"
 #include <assert.h>
 #include <cglm/mat4.h>
 #include <cglm/cam.h>

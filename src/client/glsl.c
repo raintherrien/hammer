@@ -1,4 +1,4 @@
-#include "hammer/glsl.h"
+#include "hammer/client/glsl.h"
 #include "hammer/error.h"
 #include "hammer/file.h"
 #include <stdio.h>

@@ -1,5 +1,5 @@
-#include "hammer/gui.h"
-#include "hammer/window.h"
+#include "hammer/client/gui.h"
+#include "hammer/client/window.h"
 #include <assert.h>
 
 gui_btn_state

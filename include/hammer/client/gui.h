@@ -1,5 +1,5 @@
-#ifndef HAMMER_GUI_H_
-#define HAMMER_GUI_H_
+#ifndef HAMMER_CLIENT_GUI_H_
+#define HAMMER_CLIENT_GUI_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -225,4 +225,4 @@ void gui_line(float x0, float y0, float z0, float t0, uint32_t c0,
 
 float gui_char_width(float font_size);
 
-#endif /* HAMMER_GUI_H_ */
+#endif /* HAMMER_CLIENT_GUI_H_ */

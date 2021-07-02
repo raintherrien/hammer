@@ -1,6 +1,5 @@
-#include "hammer/appstate/server_planet_gen/planet_gen_iter_async.h"
+#include "hammer/client/appstate/server_planet_gen/planet_gen_iter_async.h"
 #include "hammer/mem.h"
-#include "hammer/server.h"
 #include "hammer/vector.h"
 #include "hammer/worldgen/biome.h"
 #include "hammer/worldgen/climate.h"

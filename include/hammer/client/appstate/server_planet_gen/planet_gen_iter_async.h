@@ -1,5 +1,5 @@
-#ifndef HAMMER_APPSTATE_SERVER_PLANET_GEN_ITER_ASYNC_H_
-#define HAMMER_APPSTATE_SERVER_PLANET_GEN_ITER_ASYNC_H_
+#ifndef HAMMER_CLIENT_APPSTATE_SERVER_PLANET_GEN_ITER_ASYNC_H_
+#define HAMMER_CLIENT_APPSTATE_SERVER_PLANET_GEN_ITER_ASYNC_H_
 
 #include <deadlock/dl.h>
 #include <GL/glew.h>
@@ -53,4 +53,4 @@ void planet_gen_iter_async_create (struct planet_gen_iter_async *);
 void planet_gen_iter_async_destroy(struct planet_gen_iter_async *);
 void planet_gen_iter_async_resume (struct planet_gen_iter_async *);
 
-#endif /* HAMMER_APPSTATE_SERVER_PLANET_GEN_ITER_ASYNC_H_ */
+#endif /* HAMMER_CLIENT_APPSTATE_SERVER_PLANET_GEN_ITER_ASYNC_H_ */

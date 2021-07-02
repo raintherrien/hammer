@@ -1,6 +1,6 @@
+#include "hammer/client/glthread.h"
+#include "hammer/client/window.h"
 #include "hammer/error.h"
-#include "hammer/glthread.h"
-#include "hammer/window.h"
 #include <errno.h>
 #include <stdatomic.h>
 #include <pthread.h>

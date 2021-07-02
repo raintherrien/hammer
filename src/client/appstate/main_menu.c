@@ -1,8 +1,8 @@
-#include "hammer/appstate.h"
-#include "hammer/glthread.h"
-#include "hammer/gui.h"
+#include "hammer/client/appstate.h"
+#include "hammer/client/glthread.h"
+#include "hammer/client/gui.h"
+#include "hammer/client/window.h"
 #include "hammer/version.h"
-#include "hammer/window.h"
 
 #define VERSION_STR_MAX_LEN 128
 

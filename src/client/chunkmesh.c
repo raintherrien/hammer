@@ -1,6 +1,6 @@
 #include "hammer/client/chunkmesh.h"
+#include "hammer/client/glsl.h"
 #include "hammer/error.h"
-#include "hammer/glsl.h"
 #include "hammer/hexagon.h"
 #include "hammer/mem.h"
 #include "hammer/world/chunk.h"

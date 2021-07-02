@@ -1,7 +1,7 @@
-#ifndef HAMMER_GUI_LINE_H_
-#define HAMMER_GUI_LINE_H_
+#ifndef HAMMER_CLIENT_GUI_LINE_H_
+#define HAMMER_CLIENT_GUI_LINE_H_
 
-#include "hammer/gui.h"
+#include "hammer/client/gui.h"
 
 struct gui_line_vert {
 	GLfloat position[3];
@@ -27,4 +27,4 @@ void gui_line_frame_create(struct gui_line_renderer *, struct gui_line_frame *);
 void gui_line_frame_destroy(struct gui_line_frame *);
 void gui_line_render(struct gui_line_renderer *, struct gui_line_frame *);
 
-#endif /* HAMMER_GUI_LINE_H_ */
+#endif /* HAMMER_CLIENT_GUI_LINE_H_ */

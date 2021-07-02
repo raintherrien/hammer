@@ -1,8 +1,8 @@
-#include "hammer/gui/text.h"
+#include "hammer/client/glsl.h"
+#include "hammer/client/gui/text.h"
+#include "hammer/client/window.h"
 #include "hammer/error.h"
-#include "hammer/glsl.h"
 #include "hammer/image.h"
-#include "hammer/window.h"
 #include <assert.h>
 #include <SDL2/SDL_image.h>
 

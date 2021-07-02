@@ -1,11 +1,10 @@
-#include "hammer/appstate.h"
 #include "hammer/chunkmgr.h"
+#include "hammer/client/appstate.h"
 #include "hammer/client/chunkmesh.h"
-#include "hammer/glthread.h"
+#include "hammer/client/glthread.h"
+#include "hammer/client/window.h"
 #include "hammer/hexagon.h"
 #include "hammer/math.h"
-#include "hammer/server.h"
-#include "hammer/window.h"
 #include <cglm/cam.h>
 #include <cglm/euler.h>
 

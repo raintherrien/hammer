@@ -1,5 +1,5 @@
-#ifndef HAMMER_APPSTATE_H_
-#define HAMMER_APPSTATE_H_
+#ifndef HAMMER_CLIENT_APPSTATE_H_
+#define HAMMER_CLIENT_APPSTATE_H_
 
 #include <deadlock/dl.h>
 
@@ -30,4 +30,4 @@ dltask *appstate_runner(void);
  */
 void appstate_transition(int transition);
 
-#endif /* HAMMER_APPSTATE_H_ */
+#endif /* HAMMER_CLIENT_APPSTATE_H_ */

@@ -1,10 +1,10 @@
-#ifndef HAMMER_WINDOW_H_
-#define HAMMER_WINDOW_H_
+#ifndef HAMMER_CLIENT_WINDOW_H_
+#define HAMMER_CLIENT_WINDOW_H_
 
-#include "hammer/gui/line.h"
-#include "hammer/gui/map.h"
-#include "hammer/gui/rect.h"
-#include "hammer/gui/text.h"
+#include "hammer/client/gui/line.h"
+#include "hammer/client/gui/map.h"
+#include "hammer/client/gui/rect.h"
+#include "hammer/client/gui/text.h"
 #include <cglm/mat4.h>
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
@@ -102,4 +102,4 @@ window_warp_mouse(int x, int y)
 	SDL_WarpMouseInWindow(window.handle, x, y);
 }
 
-#endif /* HAMMER_WINDOW_H_ */
+#endif /* HAMMER_CLIENT_WINDOW_H_ */

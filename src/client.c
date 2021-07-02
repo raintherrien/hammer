@@ -1,7 +1,7 @@
 #include "hammer/cli.h"
+#include "hammer/client/appstate.h"
+#include "hammer/client/glthread.h"
 #include "hammer/error.h"
-#include "hammer/appstate.h"
-#include "hammer/glthread.h"
 #include <deadlock/dl.h>
 #include <stdlib.h>
 

@@ -33,44 +33,47 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
-set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate/client.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/main_menu.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/server_config.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/server_planet_gen/planet_gen_iter_async.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/server_planet_gen.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate/server_region_gen.c
-                   ${PROJECT_SOURCE_DIR}/src/client/chunkmesh.c
-                   ${PROJECT_SOURCE_DIR}/src/gui/interaction.c
-                   ${PROJECT_SOURCE_DIR}/src/gui/line.c
-                   ${PROJECT_SOURCE_DIR}/src/gui/map.c
-                   ${PROJECT_SOURCE_DIR}/src/gui/rect.c
-                   ${PROJECT_SOURCE_DIR}/src/gui/text.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/biome.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/region.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/stream.c
-                   ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c
-                   ${PROJECT_SOURCE_DIR}/src/appstate.c
-                   ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
+set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
                    ${PROJECT_SOURCE_DIR}/src/cli.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate/client.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate/main_menu.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate/server_config.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate/server_planet_gen.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate/server_planet_gen/planet_gen_iter_async.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate/server_region_gen.c
                    ${PROJECT_SOURCE_DIR}/src/client.c
+                   ${PROJECT_SOURCE_DIR}/src/client/chunkmesh.c
+                   ${PROJECT_SOURCE_DIR}/src/client/glsl.c
+                   ${PROJECT_SOURCE_DIR}/src/client/gui/interaction.c
+                   ${PROJECT_SOURCE_DIR}/src/client/gui/line.c
+                   ${PROJECT_SOURCE_DIR}/src/client/gui/map.c
+                   ${PROJECT_SOURCE_DIR}/src/client/gui/rect.c
+                   ${PROJECT_SOURCE_DIR}/src/client/gui/text.c
+                   ${PROJECT_SOURCE_DIR}/src/client/window.c
                    ${PROJECT_SOURCE_DIR}/src/error.c
                    ${PROJECT_SOURCE_DIR}/src/file.c
-                   ${PROJECT_SOURCE_DIR}/src/glsl.c
-                   ${PROJECT_SOURCE_DIR}/src/opensimplex.c
-                   ${PROJECT_SOURCE_DIR}/src/salloc.c
-                   ${PROJECT_SOURCE_DIR}/src/server.c
+                   ${PROJECT_SOURCE_DIR}/src/image.c
                    ${PROJECT_SOURCE_DIR}/src/main.c
                    ${PROJECT_SOURCE_DIR}/src/map3.c
+                   ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/poisson.c
                    ${PROJECT_SOURCE_DIR}/src/pool.c
+                   ${PROJECT_SOURCE_DIR}/src/posix/glthread.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
+                   ${PROJECT_SOURCE_DIR}/src/salloc.c
                    ${PROJECT_SOURCE_DIR}/src/server.c
                    ${PROJECT_SOURCE_DIR}/src/time.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
-                   ${PROJECT_SOURCE_DIR}/src/window.c)
+                   ${PROJECT_SOURCE_DIR}/src/win32/glthread.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/biome.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/region.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/stream.c
+                   ${PROJECT_SOURCE_DIR}/src/worldgen/tectonic.c)
+
 if(PNG_FOUND)
 	list(APPEND HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/image.c)
 endif()

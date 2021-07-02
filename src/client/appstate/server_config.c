@@ -1,10 +1,9 @@
-#include "hammer/appstate/server_config.h"
-#include "hammer/appstate.h"
+#include "hammer/client/appstate.h"
+#include "hammer/client/appstate/server_config.h"
+#include "hammer/client/glthread.h"
+#include "hammer/client/gui.h"
+#include "hammer/client/window.h"
 #include "hammer/error.h"
-#include "hammer/glthread.h"
-#include "hammer/gui.h"
-#include "hammer/server.h"
-#include "hammer/window.h"
 #include <limits.h>
 #include <stdio.h>
 #include <time.h>

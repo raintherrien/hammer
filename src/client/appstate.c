@@ -1,9 +1,9 @@
-#include "hammer/appstate.h"
-#include "hammer/appstate/client.h"
-#include "hammer/appstate/main_menu.h"
-#include "hammer/appstate/server_config.h"
-#include "hammer/appstate/server_planet_gen.h"
-#include "hammer/appstate/server_region_gen.h"
+#include "hammer/client/appstate.h"
+#include "hammer/client/appstate/client.h"
+#include "hammer/client/appstate/main_menu.h"
+#include "hammer/client/appstate/server_config.h"
+#include "hammer/client/appstate/server_planet_gen.h"
+#include "hammer/client/appstate/server_region_gen.h"
 #include "hammer/error.h"
 #include <stdio.h>
 

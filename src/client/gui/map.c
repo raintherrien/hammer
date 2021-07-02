@@ -1,8 +1,8 @@
-#include "hammer/gui/map.h"
-#include "hammer/gui.h"
+#include "hammer/client/glsl.h"
+#include "hammer/client/gui.h"
+#include "hammer/client/gui/map.h"
+#include "hammer/client/window.h"
 #include "hammer/error.h"
-#include "hammer/glsl.h"
-#include "hammer/window.h"
 
 void
 gui_map_renderer_create(struct gui_map_renderer *renderer)
