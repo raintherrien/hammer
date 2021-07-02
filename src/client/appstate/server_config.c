@@ -12,6 +12,10 @@
 
 dltask appstate_server_config_frame;
 
+void appstate_server_config_setup(void) { }
+void appstate_server_config_teardown(void) { }
+
+#if 0
 static struct {
 	gui_btn_state next_btn_state;
 	gui_btn_state exit_btn_state;
@@ -225,3 +229,4 @@ parse_seed(void)
 	}
 	return parsed_seed;
 }
+#endif

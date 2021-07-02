@@ -13,8 +13,12 @@
 
 /* TODO shouldn't reference server */
 
-dltask appstate_client_frame;
+dltask appstate_godmode_frame;
 
+void appstate_godmode_setup(void) { }
+void appstate_godmode_teardown(void) { }
+
+#if 0
 static struct {
 	struct chunkmgr chunkmgr;
 	struct map3 chunkmesh_map;
@@ -27,16 +31,16 @@ static struct {
 		vec3 right;
 		float fov;
 	} camera;
-} client;
+} godmode;
 
-static void client_frame_async(DL_TASK_ARGS);
-static int client_gl_setup(void *);
-static int client_gl_frame(void *);
+static void godmode_frame_async(DL_TASK_ARGS);
+static int godmode_gl_setup(void *);
+static int godmode_gl_frame(void *);
 
 void
-appstate_client_setup(void)
+appstate_godmode_setup(void)
 {
-	appstate_client_frame = DL_TASK_INIT(client_frame_async);
+	appstate_godmode_frame = DL_TASK_INIT(godmode_frame_async);
 	chunkmgr_create(&client.chunkmgr, &server.world.region);
 	map3_create(&client.chunkmesh_map);
 	pool_create(&client.chunkmesh_pool, sizeof(struct chunkmesh));
@@ -49,11 +53,11 @@ appstate_client_setup(void)
 	glm_vec3_zero(client.camera.right);
 	client.camera.fov = 60;
 
-	glthread_execute(client_gl_setup, NULL);
+	glthread_execute(godmode_gl_setup, NULL);
 }
 
 void
-appstate_client_teardown(void)
+appstate_godmode_teardown(void)
 {
 	chunkmgr_destroy(&client.chunkmgr);
 	pool_destroy(&client.chunkmesh_pool);
@@ -61,11 +65,11 @@ appstate_client_teardown(void)
 }
 
 static void
-client_frame_async(DL_TASK_ARGS)
+godmode_frame_async(DL_TASK_ARGS)
 {
 	DL_TASK_ENTRY_VOID;
 
-	if (glthread_execute(client_gl_frame, NULL)) {
+	if (glthread_execute(godmode_gl_frame, NULL)) {
 		appstate_transition(APPSTATE_TRANSITION_CLIENT_CLOSE);
 		return;
 	}
@@ -96,7 +100,7 @@ client_frame_async(DL_TASK_ARGS)
 }
 
 static int
-client_gl_setup(void *_)
+godmode_gl_setup(void *_)
 {
 	chunkmesh_renderer_gl_create();
 	glClearColor(117 / 255.0f, 183 / 255.0f, 224 / 255.0f, 1);
@@ -105,7 +109,7 @@ client_gl_setup(void *_)
 }
 
 static int
-client_gl_frame(void *_)
+godmode_gl_frame(void *_)
 {
 	client.camera.rotation[1] -= window.motion_x / 600.0f;
 	client.camera.rotation[0] -= window.motion_y / 600.0f;
@@ -196,3 +200,4 @@ client_gl_frame(void *_)
 	window_submitframe();
 	return window.should_close;
 }
+#endif

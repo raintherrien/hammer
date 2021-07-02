@@ -1,3 +1,4 @@
+#if 0
 #include "hammer/client/appstate/server_planet_gen/planet_gen_iter_async.h"
 #include "hammer/mem.h"
 #include "hammer/vector.h"
@@ -418,3 +419,4 @@ planet_gen_iter_img_composite(struct planet_gen_iter_async *async)
 		        dstx, dsty);
 	}
 }
+#endif

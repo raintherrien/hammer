@@ -36,7 +36,7 @@ add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMME
 set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
                    ${PROJECT_SOURCE_DIR}/src/cli.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate.c
-                   ${PROJECT_SOURCE_DIR}/src/client/appstate/client.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate/godmode.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/server_config.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/server_planet_gen.c
@@ -59,7 +59,6 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
                    ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/poisson.c
                    ${PROJECT_SOURCE_DIR}/src/pool.c
-                   ${PROJECT_SOURCE_DIR}/src/posix/glthread.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
                    ${PROJECT_SOURCE_DIR}/src/salloc.c
                    ${PROJECT_SOURCE_DIR}/src/server.c
@@ -67,7 +66,6 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
                    ${PROJECT_SOURCE_DIR}/src/well.c
-                   ${PROJECT_SOURCE_DIR}/src/win32/glthread.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/biome.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/climate.c
                    ${PROJECT_SOURCE_DIR}/src/worldgen/region.c
@@ -81,10 +79,12 @@ endif()
 # Assume MINGW uses POSIX threads
 if(WIN32 AND NOT MINGW)
 	set(HAMMER_SOURCES ${HAMMER_SOURCES}
-	                   ${PROJECT_SOURCE_DIR}/src/win32/glthread.c)
+	                   ${PROJECT_SOURCE_DIR}/src/win32/glthread.c
+	                   ${PROJECT_SOURCE_DIR}/src/win32/net.c)
 else()
 	set(HAMMER_SOURCES ${HAMMER_SOURCES}
-	                   ${PROJECT_SOURCE_DIR}/src/posix/glthread.c)
+	                   ${PROJECT_SOURCE_DIR}/src/posix/glthread.c
+	                   ${PROJECT_SOURCE_DIR}/src/posix/net.c)
 endif()
 
 add_executable(hammer ${HAMMER_SOURCES})

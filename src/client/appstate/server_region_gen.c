@@ -1,11 +1,10 @@
 #include "hammer/client/appstate.h"
 #include "hammer/client/glsl.h"
 #include "hammer/client/glthread.h"
+#include "hammer/client/window.h"
 #include "hammer/error.h"
 #include "hammer/math.h"
 #include "hammer/mem.h"
-#include "hammer/server.h"
-#include "hammer/window.h"
 #include <cglm/affine.h>
 #include <cglm/cam.h>
 
@@ -17,6 +16,12 @@
 
 dltask appstate_server_region_gen_frame;
 
+void appstate_server_region_gen_setup(void) { }
+void appstate_server_planet_gen_reset_region_selection(void) { }
+void appstate_server_region_gen_teardown_discard_region(void) { }
+void appstate_server_region_gen_teardown_confirm_region(void) { }
+
+#if 0
 enum {
 	HEIGHTMAP_IMG_SEDIMENT,
 	HEIGHTMAP_IMG_STONE,
@@ -350,3 +355,4 @@ region_generation_gl_blit_heightmap(void *_)
 
 	return 0;
 }
+#endif

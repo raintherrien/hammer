@@ -1,5 +1,5 @@
 #include "hammer/client/appstate.h"
-#include "hammer/client/appstate/client.h"
+#include "hammer/client/appstate/godmode.h"
 #include "hammer/client/appstate/main_menu.h"
 #include "hammer/client/appstate/server_config.h"
 #include "hammer/client/appstate/server_planet_gen.h"
@@ -69,11 +69,11 @@ appstate_transition(int transition)
 		/* Planet still constructed */
 		appstate_server_region_gen_teardown_confirm_region();
 		appstate_server_planet_gen_teardown();
-		appstate_client_setup();
-		appstate_manager.appstate_task = &appstate_client_frame;
+		appstate_godmode_setup();
+		appstate_manager.appstate_task = &appstate_godmode_frame;
 		break;
 	case APPSTATE_TRANSITION_CLIENT_CLOSE:
-		appstate_client_teardown();
+		appstate_godmode_teardown();
 		appstate_main_menu_setup();
 		appstate_manager.appstate_task = &appstate_main_menu_frame;
 		break;

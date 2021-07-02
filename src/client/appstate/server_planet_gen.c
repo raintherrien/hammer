@@ -15,6 +15,10 @@
 
 dltask appstate_server_planet_gen_frame;
 
+void appstate_server_planet_gen_setup(void) { }
+void appstate_server_planet_gen_teardown(void) { }
+
+#if 0
 /*
  * This appstate performs three stages of terrain generation: tectonic,
  * climate, and stream graph. The user can flip between rendered world images
@@ -563,3 +567,4 @@ planet_generation_gl_blit_complete_image(void *_)
 
 	return 0;
 }
+#endif
