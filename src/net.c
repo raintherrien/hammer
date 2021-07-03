@@ -2,6 +2,11 @@
 #include "hammer/net.h"
 
 /*
+ * TODO: We don't even attempt to un/marshall to network byte order. What's
+ * the likelyhood someone will want to run this on BE hardware? :)
+ */
+
+/*
  * Default functions that warn about attempted network traffic before a
  * connection is established.
  */
@@ -27,15 +32,15 @@ netmsg_decode_header(char buf[NETMSG_HEADER_SZ],
 {
 	/* First byte is type */
 	*type = *(uint8_t *)buf;
-	/* Next eight bytes are big-endian size_t */
-	*datasz = ((size_t)buf[8] <<  0) |
-	          ((size_t)buf[7] <<  8) |
-	          ((size_t)buf[6] << 16) |
-	          ((size_t)buf[5] << 24) |
-	          ((size_t)buf[4] << 32) |
-	          ((size_t)buf[3] << 40) |
-	          ((size_t)buf[2] << 48) |
-	          ((size_t)buf[1] << 56);
+	/* Next eight bytes are little-endian size_t. See above about BE... */
+	*datasz = ((size_t)buf[1] <<  0) |
+	          ((size_t)buf[2] <<  8) |
+	          ((size_t)buf[3] << 16) |
+	          ((size_t)buf[4] << 24) |
+	          ((size_t)buf[5] << 32) |
+	          ((size_t)buf[6] << 40) |
+	          ((size_t)buf[7] << 48) |
+	          ((size_t)buf[8] << 56);
 }
 
 void
@@ -45,8 +50,8 @@ netmsg_encode_header(char buf[NETMSG_HEADER_SZ],
 {
 	char *sptr = (char *)&datasz;
 	buf[0] = (uint8_t)type;
-	for (size_t i = 1; i < 9; ++ i)
-		buf[i] = sptr[8-i];
+	for (size_t i = 0; i < 8; ++ i)
+		buf[i+1] = sptr[i];
 }
 
 static void
