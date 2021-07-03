@@ -65,6 +65,8 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate.c
                    ${PROJECT_SOURCE_DIR}/src/ring.c
                    ${PROJECT_SOURCE_DIR}/src/salloc.c
                    ${PROJECT_SOURCE_DIR}/src/server.c
+                   ${PROJECT_SOURCE_DIR}/src/server/appstate/start_local.c
+                   ${PROJECT_SOURCE_DIR}/src/server/appstate/transition_table.c
                    ${PROJECT_SOURCE_DIR}/src/time.c
                    ${PROJECT_SOURCE_DIR}/src/vector.c
                    ${PROJECT_SOURCE_DIR}/src/version.c
