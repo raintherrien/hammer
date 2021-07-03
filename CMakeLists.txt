@@ -57,6 +57,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate.c
                    ${PROJECT_SOURCE_DIR}/src/image.c
                    ${PROJECT_SOURCE_DIR}/src/main.c
                    ${PROJECT_SOURCE_DIR}/src/map3.c
+                   ${PROJECT_SOURCE_DIR}/src/net.c
                    ${PROJECT_SOURCE_DIR}/src/opensimplex.c
                    ${PROJECT_SOURCE_DIR}/src/poisson.c
                    ${PROJECT_SOURCE_DIR}/src/pool.c

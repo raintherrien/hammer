@@ -3,6 +3,7 @@
 #include "hammer/client/glthread.h"
 #include "hammer/client/gui.h"
 #include "hammer/client/window.h"
+#include "hammer/net.h"
 #include "hammer/version.h"
 #include <assert.h>
 

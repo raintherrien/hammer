@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 int client_main(struct rtargs);
-int server_main(struct rtargs);
+int dedicated_server_main(struct rtargs);
 
 int
 main(int argc, char **argv)
@@ -18,5 +18,5 @@ main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	return args.server ? server_main(args) : client_main(args);
+	return args.server ? dedicated_server_main(args) : client_main(args);
 }
