@@ -7,7 +7,8 @@
 
 /*
  * Our POSIX local communication uses UNIX domain sockets because the
- * performance is decent and they're easy!
+ * performance is decent, they're easy, and when we need real networking it's
+ * all file descriptors!
  *
  * TODO: sockets never freed
  */
@@ -15,18 +16,18 @@
 #define CLIENT_SOCKET 0
 #define SERVER_SOCKET 1
 
-static void local_discard(int fd, size_t datasz);
-static int  local_peek(int fd, enum netmsg_type *type, size_t *datasz);
-static void local_read(int fd, void *data, size_t datasz);
+static void fd_discard(int fd, size_t datasz);
+static int  fd_peek(int fd, enum netmsg_type *type, size_t *datasz);
+static void fd_read(int fd, void *data, size_t datasz);
 
-static void client_local_discard(size_t datasz);
-static int  client_local_peek(enum netmsg_type *type, size_t *datasz);
-static void client_local_read(void *data, size_t datasz);
-static void client_local_write(enum netmsg_type type, const void *data, size_t datasz);
-static void server_local_discard(size_t datasz);
-static int  server_local_peek(enum netmsg_type *type, size_t *datasz);
-static void server_local_read(void *data, size_t datasz);
-static void server_local_write(enum netmsg_type type, const void *data, size_t datasz);
+static void client_unix_discard(size_t datasz);
+static int  client_unix_peek(enum netmsg_type *type, size_t *datasz);
+static void client_unix_read(void *data, size_t datasz);
+static void client_unix_write(enum netmsg_type type, const void *data, size_t datasz);
+static void server_unix_discard(size_t datasz);
+static int  server_unix_peek(enum netmsg_type *type, size_t *datasz);
+static void server_unix_read(void *data, size_t datasz);
+static void server_unix_write(enum netmsg_type type, const void *data, size_t datasz);
 
 static struct {
 	int fds[2];
@@ -36,22 +37,22 @@ void
 local_connection_init(void)
 {
 	if (socketpair(AF_LOCAL, SOCK_STREAM, 0, unix_net.fds) == -1) {
-		xpanic("Unable to create local connection");
+		xpanic("Unable to create UNIX domain socket connection");
 	}
 
-	client_discard = client_local_discard;
-	client_peek = client_local_peek;
-	client_read = client_local_read;
-	client_write = client_local_write;
+	client_discard = client_unix_discard;
+	client_peek = client_unix_peek;
+	client_read = client_unix_read;
+	client_write = client_unix_write;
 
-	server_discard = server_local_discard;
-	server_peek = server_local_peek;
-	server_read = server_local_read;
-	server_write = server_local_write;
+	server_discard = server_unix_discard;
+	server_peek = server_unix_peek;
+	server_read = server_unix_read;
+	server_write = server_unix_write;
 }
 
 static void
-local_discard(int fd, size_t datasz)
+fd_discard(int fd, size_t datasz)
 {
 	errno = 0;
 
@@ -60,8 +61,8 @@ local_discard(int fd, size_t datasz)
 	size_t chunks = datasz / 512 + 1;
 	for (size_t i = 0; i < chunks; ++ i) {
 		size_t bytes_in_chunk = 512;
-		/* last chunk will be less than 512 bytes */
-		if (i == chunks - 1 && datasz % 512 > 0)
+		/* last chunk will be less than 512 bytes, possibly zero */
+		if (i == chunks - 1)
 			bytes_in_chunk = datasz % 512;
 		while (bytes_in_chunk) {
 			ssize_t count = read(fd, scratch, bytes_in_chunk);
@@ -73,7 +74,7 @@ local_discard(int fd, size_t datasz)
 }
 
 static int
-local_peek(int fd, enum netmsg_type *type, size_t *datasz)
+fd_peek(int fd, enum netmsg_type *type, size_t *datasz)
 {
 	errno = 0;
 
@@ -100,7 +101,7 @@ local_peek(int fd, enum netmsg_type *type, size_t *datasz)
 }
 
 static void
-local_read(int fd, void *data, size_t datasz)
+fd_read(int fd, void *data, size_t datasz)
 {
 	errno = 0;
 
@@ -122,7 +123,7 @@ local_read(int fd, void *data, size_t datasz)
 }
 
 static void
-local_write(int fd, enum netmsg_type type, const void *data, size_t datasz)
+fd_write(int fd, enum netmsg_type type, const void *data, size_t datasz)
 {
 	errno = 0;
 
@@ -153,49 +154,49 @@ local_write(int fd, enum netmsg_type type, const void *data, size_t datasz)
 }
 
 static void
-client_local_discard(size_t datasz)
+client_unix_discard(size_t datasz)
 {
-	local_discard(unix_net.fds[CLIENT_SOCKET], datasz);
+	fd_discard(unix_net.fds[CLIENT_SOCKET], datasz);
 }
 
 static int
-client_local_peek(enum netmsg_type *type, size_t *datasz)
+client_unix_peek(enum netmsg_type *type, size_t *datasz)
 {
-	return local_peek(unix_net.fds[CLIENT_SOCKET], type, datasz);
+	return fd_peek(unix_net.fds[CLIENT_SOCKET], type, datasz);
 }
 
 static void
-client_local_read(void *data, size_t datasz)
+client_unix_read(void *data, size_t datasz)
 {
-	local_read(unix_net.fds[CLIENT_SOCKET], data, datasz);
+	fd_read(unix_net.fds[CLIENT_SOCKET], data, datasz);
 }
 
 static void
-client_local_write(enum netmsg_type type, const void *data, size_t datasz)
+client_unix_write(enum netmsg_type type, const void *data, size_t datasz)
 {
-	local_write(unix_net.fds[CLIENT_SOCKET], type, data, datasz);
+	fd_write(unix_net.fds[CLIENT_SOCKET], type, data, datasz);
 }
 
 static void
-server_local_discard(size_t datasz)
+server_unix_discard(size_t datasz)
 {
-	local_discard(unix_net.fds[SERVER_SOCKET], datasz);
+	fd_discard(unix_net.fds[SERVER_SOCKET], datasz);
 }
 
 static int
-server_local_peek(enum netmsg_type *type, size_t *datasz)
+server_unix_peek(enum netmsg_type *type, size_t *datasz)
 {
-	return local_peek(unix_net.fds[SERVER_SOCKET], type, datasz);
+	return fd_peek(unix_net.fds[SERVER_SOCKET], type, datasz);
 }
 
 static void
-server_local_read(void *data, size_t datasz)
+server_unix_read(void *data, size_t datasz)
 {
-	local_read(unix_net.fds[SERVER_SOCKET], data, datasz);
+	fd_read(unix_net.fds[SERVER_SOCKET], data, datasz);
 }
 
 static void
-server_local_write(enum netmsg_type type, const void *data, size_t datasz)
+server_unix_write(enum netmsg_type type, const void *data, size_t datasz)
 {
-	local_write(unix_net.fds[SERVER_SOCKET], type, data, datasz);
+	fd_write(unix_net.fds[SERVER_SOCKET], type, data, datasz);
 }
