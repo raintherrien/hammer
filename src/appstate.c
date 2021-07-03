@@ -3,40 +3,31 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_TRANSITIONS 128
-
-static struct {
-	dltask  runner;
-	dltask *appstate_task;
-	struct appstate_transition *current_state_transition;
-
-	/* Transition table */
-	size_t transitions_count;
-	struct appstate_transition transitions[MAX_TRANSITIONS];
-} mgr;
-
-static void appstate_manager_loop_async(DL_TASK_ARGS);
+static void appstate_manager_trampoline_async(DL_TASK_ARGS);
 
 dltask *
-appstate_register(size_t count,
-                  struct appstate_transition transitions[count])
+appstate_manager_init(struct appstate_manager *mgr,
+                      size_t transition_count,
+                      struct appstate_transition transitions[transition_count])
 {
-	mgr.runner = DL_TASK_INIT(appstate_manager_loop_async);
+	mgr->trampoline_ = DL_TASK_INIT(appstate_manager_trampoline_async);
 
 	/* Copy the transition table */
-	if (count > MAX_TRANSITIONS)
-		xpanicva("appstate_manager_create passed %zu transitions which is larger than the maximum table size of %zu", count, MAX_TRANSITIONS);
-	mgr.transitions_count = count;
-	memcpy(mgr.transitions, transitions, count * sizeof(*mgr.transitions));
+	if (transition_count > APPSTATE_MAX_TRANSITIONS)
+		xpanicva("appstate_manager_register passed %zu transitions which is larger than the maximum table size of %zu", transition_count, APPSTATE_MAX_TRANSITIONS);
+	mgr->transition_count_ = transition_count;
+	memcpy(mgr->transitions_, transitions, transition_count * sizeof(*mgr->transitions_));
 
 	/* Invoke the initial transition */
 	size_t init_state_count = 0;
-	for (size_t i = 0; i < count; ++ i) {
-		if (mgr.transitions[i].state == -1) {
-			++ init_state_count;
-			mgr.current_state_transition = &mgr.transitions[i];
-			mgr.appstate_task = mgr.current_state_transition->enter_fn();
-		}
+	for (size_t i = 0; i < mgr->transition_count_; ++ i) {
+		struct appstate_transition t = mgr->transitions_[i];
+		if (t.old_state != APPSTATE_OLD_STATE_INITIAL)
+			continue;
+
+		++ init_state_count;
+		mgr->curr_transition_ = t;
+		mgr->curr_appstate_ = mgr->curr_transition_.enter_fn(NULL);
 	}
 	if (init_state_count < 1) {
 		errno = EINVAL;
@@ -47,34 +38,45 @@ appstate_register(size_t count,
 		xpanic("appstate_register called with multiple initial transitions (state == -1)");
 	}
 
-	return &mgr.runner;
+	return &mgr->trampoline_;
 }
 
 void
-appstate_transition(int state)
+transition(struct appstate_manager *mgr, int new_state)
 {
-	mgr.current_state_transition->exit_fn(mgr.appstate_task);
-	for (size_t i = 0; i < mgr.transitions_count; ++ i) {
-		if (mgr.transitions[i].state == state) {
-			mgr.current_state_transition = &mgr.transitions[i];
-			if (mgr.current_state_transition->enter_fn == NULL)
-				dlterminate();
-			else
-				mgr.appstate_task = mgr.current_state_transition->enter_fn();
-			return;
+	dltask *exiting_appstate = mgr->curr_appstate_;
+	struct appstate_transition exiting = mgr->curr_transition_;
+	int old_state = exiting.new_state;
+
+	if (new_state == APPSTATE_NEW_STATE_TERMINATE) {
+		exiting.exit_fn(exiting_appstate);
+		dlterminate();
+		return;
+	}
+
+	for (size_t i = 0; i < mgr->transition_count_; ++ i) {
+		struct appstate_transition t = mgr->transitions_[i];
+		if (t.old_state == old_state && t.new_state == new_state) {
+			mgr->curr_transition_ = t;
+			mgr->curr_appstate_ = t.enter_fn(exiting_appstate);
+			goto exit_prior_appstate;
 		}
 	}
+
 	errno = EINVAL;
-	xpanicva("appstate_transition called with state outside transition table: %d", state);
+	xpanicva("appstate_transition called with state outside transition table: %d", new_state);
+
+exit_prior_appstate:
+	exiting.exit_fn(exiting_appstate);
 }
 
 static void
-appstate_manager_loop_async(DL_TASK_ARGS)
+appstate_manager_trampoline_async(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY_VOID;
+	DL_TASK_ENTRY(struct appstate_manager, mgr, trampoline_);
 
 	/* Kick off the current appstate task and join it back to this loop */
-	dlwait(&mgr.runner, 1);
-	dlnext(mgr.appstate_task, &mgr.runner);
-	dlasync(mgr.appstate_task);
+	dlwait(&mgr->trampoline_, 1);
+	dlnext(mgr->curr_appstate_, &mgr->trampoline_);
+	dlasync(mgr->curr_appstate_);
 }

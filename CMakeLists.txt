@@ -42,6 +42,7 @@ set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/server_planet_gen.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/server_planet_gen/planet_gen_iter_async.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/server_region_gen.c
+                   ${PROJECT_SOURCE_DIR}/src/client/appstate/transition_table.c
                    ${PROJECT_SOURCE_DIR}/src/client.c
                    ${PROJECT_SOURCE_DIR}/src/client/chunkmesh.c
                    ${PROJECT_SOURCE_DIR}/src/client/glsl.c

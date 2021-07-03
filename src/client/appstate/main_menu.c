@@ -1,9 +1,10 @@
 #include "hammer/appstate.h"
-#include "hammer/client/appstate/transitions.h"
+#include "hammer/client/appstate/transition_table.h"
 #include "hammer/client/glthread.h"
 #include "hammer/client/gui.h"
 #include "hammer/client/window.h"
 #include "hammer/version.h"
+#include <assert.h>
 
 #define VERSION_STR_MAX_LEN 128
 
@@ -19,8 +20,10 @@ static int  main_menu_gl_setup(void *);
 static int  main_menu_gl_frame(void *);
 
 dltask *
-appstate_main_menu_enter(void)
+appstate_main_menu_enter(dltask *_)
 {
+	assert(_ == NULL);
+
 	main_menu.task = DL_TASK_INIT(main_menu_frame_async);
 
 	glthread_execute(main_menu_gl_setup, NULL);
@@ -48,12 +51,12 @@ main_menu_frame_async(DL_TASK_ARGS)
 	if (glthread_execute(main_menu_gl_frame, NULL) ||
 	    main_menu.exit_btn_state == GUI_BTN_RELEASED)
 	{
-		appstate_transition(CLIENT_APPSTATE_TRANSITION_MAIN_MENU_CLOSE);
+		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_MAIN_MENU_CLOSE);
 		return;
 	}
 
 	if (main_menu.generate_new_world_btn_state == GUI_BTN_RELEASED) {
-		appstate_transition(CLIENT_APPSTATE_TRANSITION_LAUNCH_LOCAL_SERVER);
+		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_LAUNCH_LOCAL_SERVER);
 		return;
 	}
 }
