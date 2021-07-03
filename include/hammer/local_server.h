@@ -1,10 +1,8 @@
 #ifndef HAMMER_LOCAL_SERVER_H_
 #define HAMMER_LOCAL_SERVER_H_
 
-#include <deadlock/dl.h>
+/* Defined in server.c but used by client code to launch a local server  */
 
-extern dltask local_server_task;
-
-void local_server_init(void);
+void launch_local_server(void);
 
 #endif /* HAMMER_LOCAL_SERVER_H_ */

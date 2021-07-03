@@ -22,7 +22,7 @@ appstate_manager_init(struct appstate_manager *mgr,
 	size_t init_state_count = 0;
 	for (size_t i = 0; i < mgr->transition_count_; ++ i) {
 		struct appstate_transition t = mgr->transitions_[i];
-		if (t.old_state != APPSTATE_OLD_STATE_INITIAL)
+		if (t.state != APPSTATE_STATE_INITIAL)
 			continue;
 
 		++ init_state_count;
@@ -46,9 +46,8 @@ transition(struct appstate_manager *mgr, int new_state)
 {
 	dltask *exiting_appstate = mgr->curr_appstate_;
 	struct appstate_transition exiting = mgr->curr_transition_;
-	int old_state = exiting.new_state;
 
-	if (new_state == APPSTATE_NEW_STATE_TERMINATE) {
+	if (new_state == APPSTATE_STATE_TERMINATE) {
 		exiting.exit_fn(exiting_appstate);
 		dlterminate();
 		return;
@@ -56,7 +55,7 @@ transition(struct appstate_manager *mgr, int new_state)
 
 	for (size_t i = 0; i < mgr->transition_count_; ++ i) {
 		struct appstate_transition t = mgr->transitions_[i];
-		if (t.old_state == old_state && t.new_state == new_state) {
+		if (t.state == new_state) {
 			mgr->curr_transition_ = t;
 			mgr->curr_appstate_ = t.enter_fn(exiting_appstate);
 			goto exit_prior_appstate;

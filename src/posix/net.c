@@ -1,63 +1,201 @@
+#include "hammer/error.h"
 #include "hammer/net.h"
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <stdint.h>
-#include <stdio.h> /* xxx debugging */
 
 /*
  * Our POSIX local communication uses UNIX domain sockets because the
- * performance is decent and we actually **don't** want these functions to be
- * asynchronous since they'll be executing on their own dedicated threads
- * outside of the task scheduler. We want these threads to block when they're
- * waiting.
+ * performance is decent and they're easy!
+ *
+ * TODO: sockets never freed
  */
 
-int
-client_local_peek(enum netmsg_types *type, size_t *datasz)
-{
-	(void) type;
-	(void) datasz;
-	printf("client_local_peek\n");
-	return 0;
-}
+#define CLIENT_SOCKET 0
+#define SERVER_SOCKET 1
+
+static void local_discard(int fd, size_t datasz);
+static int  local_peek(int fd, enum netmsg_type *type, size_t *datasz);
+static void local_read(int fd, void *data, size_t datasz);
+
+static void client_local_discard(size_t datasz);
+static int  client_local_peek(enum netmsg_type *type, size_t *datasz);
+static void client_local_read(void *data, size_t datasz);
+static void client_local_write(enum netmsg_type type, const void *data, size_t datasz);
+static void server_local_discard(size_t datasz);
+static int  server_local_peek(enum netmsg_type *type, size_t *datasz);
+static void server_local_read(void *data, size_t datasz);
+static void server_local_write(enum netmsg_type type, const void *data, size_t datasz);
+
+static struct {
+	int fds[2];
+} unix_net;
 
 void
+local_connection_init(void)
+{
+	if (socketpair(AF_LOCAL, SOCK_STREAM, 0, unix_net.fds) == -1) {
+		xpanic("Unable to create local connection");
+	}
+
+	client_discard = client_local_discard;
+	client_peek = client_local_peek;
+	client_read = client_local_read;
+	client_write = client_local_write;
+
+	server_discard = server_local_discard;
+	server_peek = server_local_peek;
+	server_read = server_local_read;
+	server_write = server_local_write;
+}
+
+static void
+local_discard(int fd, size_t datasz)
+{
+	errno = 0;
+
+	/* TODO: This is pretty ugly and is definitely gonna seg fault :) */
+	char scratch[512];
+	size_t chunks = datasz / 512 + 1;
+	for (size_t i = 0; i < chunks; ++ i) {
+		size_t bytes_in_chunk = 512;
+		/* last chunk will be less than 512 bytes */
+		if (i == chunks - 1 && datasz % 512 > 0)
+			bytes_in_chunk = datasz % 512;
+		while (bytes_in_chunk) {
+			ssize_t count = read(fd, scratch, bytes_in_chunk);
+			if (count == -1 || errno)
+				xpanic("Failed to read from socket");
+			bytes_in_chunk -= count;
+		}
+	}
+}
+
+static int
+local_peek(int fd, enum netmsg_type *type, size_t *datasz)
+{
+	errno = 0;
+
+	int has_data = 0;
+	if (ioctl(fd, FIONREAD, &has_data) == -1 || errno) {
+		xperror("Unable to count socket bytes; peek may block");
+		has_data = 1;
+	}
+
+	if (!has_data)
+		return 0;
+
+	errno = 0;
+
+	char buf[NETMSG_HEADER_SZ];
+	ssize_t count = recv(fd, buf, NETMSG_HEADER_SZ, MSG_PEEK);
+	if (count != NETMSG_HEADER_SZ || errno) {
+		xperror("Malformed netmsg header");
+		return 0;
+	}
+
+	netmsg_decode_header(buf, type, datasz);
+	return 1;
+}
+
+static void
+local_read(int fd, void *data, size_t datasz)
+{
+	errno = 0;
+
+	char header[NETMSG_HEADER_SZ];
+	ssize_t count = read(fd, header, NETMSG_HEADER_SZ);
+	if (count != NETMSG_HEADER_SZ || errno)
+		xpanic("Malformed netmsg header");
+
+	errno = 0;
+
+	char *buffer = data;
+	while (datasz) {
+		ssize_t count = read(fd, buffer, datasz);
+		if (count == -1 || errno)
+			xpanic("Failed to read from socket");
+		buffer += (size_t)count;
+		datasz -= (size_t)count;
+	}
+}
+
+static void
+local_write(int fd, enum netmsg_type type, const void *data, size_t datasz)
+{
+	errno = 0;
+
+	#define WRITE(BUF,SZ) do {                                   \
+		const char *buf = BUF;                               \
+		size_t sz = SZ;                                      \
+		while (sz) {                                         \
+			ssize_t count = write(fd, buf, sz);          \
+			if (count == -1 || errno)                    \
+				xpanic("Failed to write to socket"); \
+			buf += (size_t)count;                        \
+			sz  -= (size_t)count;                        \
+		}                                                    \
+	} while (0)
+
+	if (datasz > 0)
+		xpanic("XXX Data unsupported");
+
+	/* Write header */
+	char header[NETMSG_HEADER_SZ];
+	netmsg_encode_header(header, type, datasz + NETMSG_HEADER_SZ);
+	WRITE(header, NETMSG_HEADER_SZ);
+
+	/* Write data */
+	WRITE(data, datasz);
+
+	#undef WRITE
+}
+
+static void
+client_local_discard(size_t datasz)
+{
+	local_discard(unix_net.fds[CLIENT_SOCKET], datasz);
+}
+
+static int
+client_local_peek(enum netmsg_type *type, size_t *datasz)
+{
+	return local_peek(unix_net.fds[CLIENT_SOCKET], type, datasz);
+}
+
+static void
 client_local_read(void *data, size_t datasz)
 {
-	(void) data;
-	(void) datasz;
-	printf("client_local_read\n");
+	local_read(unix_net.fds[CLIENT_SOCKET], data, datasz);
 }
 
-void
-client_local_write(enum netmsg_types type, const void *data, size_t datasz)
+static void
+client_local_write(enum netmsg_type type, const void *data, size_t datasz)
 {
-	(void) type;
-	(void) data;
-	(void) datasz;
-	printf("client_local_write\n");
+	local_write(unix_net.fds[CLIENT_SOCKET], type, data, datasz);
 }
 
-int
-server_local_peek(enum netmsg_types *type, size_t *datasz)
+static void
+server_local_discard(size_t datasz)
 {
-	(void) type;
-	(void) datasz;
-	printf("server_local_peek\n");
-	return 0;
+	local_discard(unix_net.fds[SERVER_SOCKET], datasz);
 }
 
-void
+static int
+server_local_peek(enum netmsg_type *type, size_t *datasz)
+{
+	return local_peek(unix_net.fds[SERVER_SOCKET], type, datasz);
+}
+
+static void
 server_local_read(void *data, size_t datasz)
 {
-	(void) data;
-	(void) datasz;
-	printf("server_local_read\n");
+	local_read(unix_net.fds[SERVER_SOCKET], data, datasz);
 }
 
-void
-server_local_write(enum netmsg_types type, const void *data, size_t datasz)
+static void
+server_local_write(enum netmsg_type type, const void *data, size_t datasz)
 {
-	(void) type;
-	(void) data;
-	(void) datasz;
-	printf("server_local_write\n");
+	local_write(unix_net.fds[SERVER_SOCKET], type, data, datasz);
 }

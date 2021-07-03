@@ -2,6 +2,7 @@
 #define HAMMER_APPSTATE_H_
 
 #include <deadlock/dl.h>
+#include <limits.h>
 
 #define APPSTATE_MAX_TRANSITIONS 64
 
@@ -14,27 +15,26 @@
  * to facilitate handing off resources.
  */
 struct appstate_transition {
-	int     old_state;
-	int     new_state;
-	dltask *(*enter_fn)(dltask *old_state_appstate);
+	int     state;
+	dltask *(*enter_fn)(void *arg);
 	void    (* exit_fn)(dltask *old_state_appstate);
 };
 
 /*
- * A transition table must have exactly one transition with an old_state of
- * APPSTATE_OLD_STATE_INITIAL. This transition is the initial transition
- * performed when the manager is registered.
+ * A transition table must have exactly one transition with a state of
+ * APPSTATE_STATE_INITIAL. This transition is the initial transition performed
+ * when the manager is registered.
  */
-#define APPSTATE_OLD_STATE_INITIAL -1
+#define APPSTATE_STATE_INITIAL -1
 
 /*
  * A transition table may have one or more transitions with a new_state of
- * APPSTATE_NEW_STATE_TERMINATE. When this transition is performed
- * dlterminate() is invoked after the prior appstate has exited.
+ * APPSTATE_STATE_TERMINATE. When this transition is performed dlterminate()
+ * is invoked after the prior appstate has exited.
  *
  * This is useful for terminating an application.
  */
-#define APPSTATE_NEW_STATE_TERMINATE -1
+#define APPSTATE_STATE_TERMINATE INT_MAX
 
 /*
  * The appstate manager is your typical FSM implemented using a dltask

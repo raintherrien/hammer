@@ -3,6 +3,7 @@
 #include "hammer/client/glthread.h"
 #include "hammer/client/gui.h"
 #include "hammer/client/window.h"
+#include "hammer/local_server.h"
 #include "hammer/net.h"
 #include "hammer/version.h"
 #include <assert.h>
@@ -21,9 +22,9 @@ static int  main_menu_gl_setup(void *);
 static int  main_menu_gl_frame(void *);
 
 dltask *
-appstate_main_menu_enter(dltask *_)
+appstate_main_menu_enter(void *arg)
 {
-	assert(_ == NULL);
+	assert(arg == NULL);
 
 	main_menu.task = DL_TASK_INIT(main_menu_frame_async);
 
@@ -56,8 +57,14 @@ main_menu_frame_async(DL_TASK_ARGS)
 		return;
 	}
 
+	/*
+	 * Create a new world on a local server.
+	 */
 	if (main_menu.generate_new_world_btn_state == GUI_BTN_RELEASED) {
-		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_LAUNCH_LOCAL_SERVER);
+		/* Start the local server and connect to it */
+		local_connection_init();
+		launch_local_server();
+		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_DISCOVER_SERVER);
 		return;
 	}
 }

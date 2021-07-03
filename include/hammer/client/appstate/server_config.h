@@ -3,9 +3,7 @@
 
 #include <deadlock/dl.h>
 
-void appstate_server_config_setup(void);
-void appstate_server_config_teardown(void);
-
-extern dltask appstate_server_config_frame;
+dltask *appstate_server_config_enter(dltask *);
+void    appstate_server_config_exit (dltask *);
 
 #endif /* HAMMER_CLIENT_APPSTATE_SERVER_CONFIG_H_ */

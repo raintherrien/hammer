@@ -1,1 +1,3 @@
-_Static_assert(0, "Good luck with that!");
+#include "hammer/net.h"
+
+/* Only local networking is supported right now */

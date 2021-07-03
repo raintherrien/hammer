@@ -13,7 +13,6 @@ struct frame {
 	struct gui_rect_frame gui_rect_frame;
 	struct gui_line_frame gui_line_frame;
 	unsigned long long frame_begin_ns;
-	unsigned long long frame_end_ns;
 	GLsync fence;
 	size_t id;
 };
@@ -389,8 +388,6 @@ window_submitframe(void)
 	/* Create fence to complete when this frame is rendered */
 	SDL_GL_SwapWindow(window.handle);
 	window.current_frame->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-	/* Conclude timing this frame */
-	window.current_frame->frame_end_ns = now_ns();
 
 	window_acquire_next_frame();
 
@@ -467,8 +464,7 @@ window_acquire_next_frame(void)
 	}
 	glDeleteSync(recycling_fence);
 	window.current_frame->fence = 0;
-	window.timing[timing_id].cpu_ns = window.current_frame->frame_end_ns -
-	                                  window.current_frame->frame_begin_ns;
+	window.timing[timing_id].cpu_ns = now_ns() - window.current_frame->frame_begin_ns;
 	window.current_frame->frame_begin_ns = now_ns();
 
 	/* Begin this frame */
