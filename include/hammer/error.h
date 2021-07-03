@@ -29,6 +29,14 @@ enum {
 #define xpanic(MSG)   do { xperror(MSG);           exit(errno); } while (0)
 #define xpanicva(...) do { xperrorva(__VA_ARGS__); exit(errno); } while (0)
 
+#ifdef NDEBUG
+#define xpinfo(MSG)
+#define xpinfova(FMT, ...)
+#else
+#define xpinfo(MSG) xpinfo_impl  (__FILE__, __func__, __LINE__, MSG)
+#define xpinfova(FMT, ...) xpinfova_impl(__FILE__, __func__, __LINE__, FMT, __VA_ARGS__)
+#endif
+
 /* Hey, if perror can ignore stderr write errors, so can we! */
 void xperror_impl(
 	const char   *file,
@@ -38,6 +46,21 @@ void xperror_impl(
 );
 
 void xperrorva_impl(
+	const char   *file,
+	const char   *function,
+	unsigned long line,
+	const char   *fmt,
+	...
+);
+
+void xpinfo_impl(
+	const char   *file,
+	const char   *function,
+	unsigned long line,
+	const char   *msg
+);
+
+void xpinfova_impl(
 	const char   *file,
 	const char   *function,
 	unsigned long line,

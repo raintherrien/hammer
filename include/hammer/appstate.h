@@ -74,6 +74,6 @@ dltask *appstate_manager_init(struct appstate_manager *,
  *
  * This should only be called immediately before returning from a state task.
  */
-void transition(struct appstate_manager *, int new_state);
+void transition(struct appstate_manager *, int new_state, void *new_state_arg);
 
 #endif /* HAMMER_APPSTATE_H_ */

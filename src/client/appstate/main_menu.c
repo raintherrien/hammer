@@ -53,7 +53,7 @@ main_menu_frame_async(DL_TASK_ARGS)
 	if (glthread_execute(main_menu_gl_frame, NULL) ||
 	    main_menu.exit_btn_state == GUI_BTN_RELEASED)
 	{
-		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_MAIN_MENU_CLOSE);
+		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_MAIN_MENU_CLOSE, NULL);
 		return;
 	}
 
@@ -64,7 +64,7 @@ main_menu_frame_async(DL_TASK_ARGS)
 		/* Start the local server and connect to it */
 		local_connection_init();
 		launch_local_server();
-		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_DISCOVER_SERVER);
+		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_DISCOVER_SERVER, NULL);
 		return;
 	}
 }

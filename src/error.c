@@ -21,11 +21,21 @@ xperror_impl(
 	const char   *msg
 )
 {
-	fprintf(stderr, "%s:%lu:%s: " ANSI_ESC_BOLDRED, file, line, function);
+	fprintf(stderr, "[ERROR] %s:%lu:%s: " ANSI_ESC_BOLDRED, file, line, function);
 	perror(msg);
 	fputs(ANSI_ESC_RESET, stderr);
 }
 
+void
+xpinfo_impl(
+	const char   *file,
+	const char   *function,
+	unsigned long line,
+	const char   *msg
+)
+{
+	fprintf(stdout, "[INFO] %s:%lu:%s: %s\n", file, line, function, msg);
+}
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -43,11 +53,30 @@ xperrorva_impl(
 	va_list fwdargs;
 	va_start(fwdargs, fmt);
 
-	fprintf(stderr, "%s:%lu:%s: " ANSI_ESC_BOLDRED, file, line, function);
+	fprintf(stderr, "[ERROR] %s:%lu:%s: " ANSI_ESC_BOLDRED, file, line, function);
 	vfprintf(stderr, fmt, fwdargs);
 	fprintf(stderr, ": ");
 	perror(NULL);
 	fputs(ANSI_ESC_RESET, stderr);
+
+	va_end(fwdargs);
+}
+
+void
+xpinfova_impl(
+	const char   *file,
+	const char   *function,
+	unsigned long line,
+	const char   *fmt,
+	...
+)
+{
+	va_list fwdargs;
+	va_start(fwdargs, fmt);
+
+	fprintf(stdout, "[INFO] %s:%lu:%s: ", file, line, function);
+	vfprintf(stdout, fmt, fwdargs);
+	fputs("\n", stdout);
 
 	va_end(fwdargs);
 }

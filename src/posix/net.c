@@ -139,9 +139,6 @@ fd_write(int fd, enum netmsg_type type, const void *data, size_t datasz)
 		}                                                    \
 	} while (0)
 
-	if (datasz > 0)
-		xpanic("XXX Data unsupported");
-
 	/* Write header */
 	char header[NETMSG_HEADER_SZ];
 	netmsg_encode_header(header, type, datasz + NETMSG_HEADER_SZ);

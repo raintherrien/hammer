@@ -1,4 +1,5 @@
 #include "hammer/client/appstate/main_menu.h"
+#include "hammer/client/appstate/server_config.h"
 #include "hammer/client/appstate/server_discover.h"
 #include "hammer/client/appstate/transition_table.h"
 
@@ -15,6 +16,13 @@ struct appstate_transition client_tt[] = {
 		CLIENT_APPSTATE_TRANSITION_DISCOVER_SERVER,
 		appstate_server_discover_enter,
 		appstate_server_discover_exit
+	},
+
+	/* Server discovered in configurable state */
+	{
+		CLIENT_APPSTATE_TRANSITION_CONFIGURE_SERVER,
+		appstate_server_config_enter,
+		appstate_server_config_exit
 	}
 };
 

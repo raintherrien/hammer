@@ -42,7 +42,7 @@ appstate_manager_init(struct appstate_manager *mgr,
 }
 
 void
-transition(struct appstate_manager *mgr, int new_state)
+transition(struct appstate_manager *mgr, int new_state, void *new_state_arg)
 {
 	dltask *exiting_appstate = mgr->curr_appstate_;
 	struct appstate_transition exiting = mgr->curr_transition_;
@@ -57,7 +57,7 @@ transition(struct appstate_manager *mgr, int new_state)
 		struct appstate_transition t = mgr->transitions_[i];
 		if (t.state == new_state) {
 			mgr->curr_transition_ = t;
-			mgr->curr_appstate_ = t.enter_fn(exiting_appstate);
+			mgr->curr_appstate_ = t.enter_fn(new_state_arg);
 			goto exit_prior_appstate;
 		}
 	}

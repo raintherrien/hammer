@@ -1,26 +1,25 @@
 #include "hammer/appstate.h"
-#include "hammer/client/appstate/server_config.h"
+#include "hammer/client/appstate/transition_table.h"
 #include "hammer/client/glthread.h"
 #include "hammer/client/gui.h"
 #include "hammer/client/window.h"
 #include "hammer/error.h"
+#include "hammer/net.h"
+#include "hammer/time.h"
+#include "hammer/worldgen/world_opts.h"
 #include <limits.h>
 #include <stdio.h>
 #include <time.h>
 
 #define NUM_EDIT_BUFFER_LEN 32
 
-dltask appstate_server_config_frame;
-
-void appstate_server_config_setup(void) { }
-void appstate_server_config_teardown(void) { }
-
-#if 0
 static struct {
+	dltask task;
+	struct world_opts opts;
 	gui_btn_state next_btn_state;
 	gui_btn_state exit_btn_state;
-	int scale;
 	char seed_edit_buf[NUM_EDIT_BUFFER_LEN];
+	time_ns sent_config_ns;
 } server_config;
 
 static void server_config_frame_async(DL_TASK_ARGS);
@@ -31,11 +30,11 @@ static int server_config_gl_frame(void *);
 static unsigned long long random_seed(void);
 static unsigned long long parse_seed(void);
 
-void
-appstate_server_config_setup(void)
+dltask *
+appstate_server_config_enter(void *_)
 {
-	appstate_server_config_frame = DL_TASK_INIT(server_config_frame_async);
-	server.world.opts = (struct world_opts) {
+	server_config.task = DL_TASK_INIT(server_config_frame_async);
+	server_config.opts = (struct world_opts) {
 		.seed = random_seed(),
 		.scale = 3,
 		.tectonic = {
@@ -57,18 +56,20 @@ appstate_server_config_setup(void)
 			.rift_ticks       = 60
 		}
 	};
-	glthread_execute(server_config_gl_setup, NULL);
-	snprintf(server_config.seed_edit_buf, NUM_EDIT_BUFFER_LEN,
-	         "%llu", server.world.opts.seed);
 	server_config.next_btn_state = 0;
 	server_config.exit_btn_state = 0;
-	server_config.scale = server.world.opts.scale;
+	snprintf(server_config.seed_edit_buf, NUM_EDIT_BUFFER_LEN, "%llu", server_config.opts.seed);
+	server_config.sent_config_ns = 0;
+
+	glthread_execute(server_config_gl_setup, NULL);
+
+	return &server_config.task;
 }
 
 void
-appstate_server_config_teardown(void)
+appstate_server_config_exit (dltask *_)
 {
-	/* Nothing to free */
+	(void) _; /* Nothing to free */
 }
 
 static void
@@ -79,21 +80,44 @@ server_config_frame_async(DL_TASK_ARGS)
 	if (glthread_execute(server_config_gl_frame, NULL) ||
 	    server_config.exit_btn_state == GUI_BTN_RELEASED)
 	{
-		appstate_transition(APPSTATE_TRANSITION_SERVER_CONFIG_CANCEL);
+		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_MAIN_MENU_OPEN, NULL);
 		return;
 	}
 
 	if (server_config.next_btn_state == GUI_BTN_RELEASED) {
-		appstate_transition(APPSTATE_TRANSITION_SERVER_PLANET_GEN);
+		server_config.next_btn_state = 0;
+		xpinfo("Sending configuration to server");
+		client_write(NETMSG_TYPE_CLIENT_SET_SERVER_CONFIG, &server_config.opts, sizeof(server_config.opts));
+		server_config.sent_config_ns = now_ns();
 		return;
+	}
+
+	/* Respond to any messages */
+	enum netmsg_type type;
+	size_t sz;
+	if (client_peek(&type, &sz)) {
+		switch (type) {
+		case NETMSG_TYPE_SERVER_ACCEPTED_CONFIG: {
+			xpinfo("Server accepted configuration");
+			// xxx move to next step
+			transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_MAIN_MENU_OPEN, NULL);
+			break;
+		}
+
+		default:
+			errno = EINVAL;
+			xperrorva("unexpected netmsg type: %d", type);
+			client_discard(sz);
+			break;
+		}
 	}
 }
 
 static int
 server_config_gl_setup(void *_)
 {
+	/* XXX These setups are all the same. Move into client/menu_style.h or something */
 	glClearColor(49 / 255.0f, 59 / 255.0f, 58 / 255.0f, 1);
-
 	return 0;
 }
 
@@ -152,7 +176,7 @@ server_config_gl_frame(void *_)
 		"", "Tiny", "Small", "Medium", "Large", "Compensating"
 	};
 	gui_text("World Scale: ", normal_text_opts);
-	for (int i = 1; i <= 5; ++ i) {
+	for (unsigned i = 1; i <= 5; ++ i) {
 		struct btn_opts scale_btn_opts = {
 			BTN_OPTS_DEFAULTS,
 			.xoffset = 4,
@@ -160,11 +184,11 @@ server_config_gl_frame(void *_)
 			.height = font_size + 2,
 			.size = font_size
 		};
-		if (GUI_BTN_PRESSED == gui_btn(server_config.scale == i,
+		if (GUI_BTN_PRESSED == gui_btn(server_config.opts.scale == i,
 		                               scale_button_text[i],
 		                               scale_btn_opts))
 		{
-			server_config.scale = i;
+			server_config.opts.scale = i;
 		}
 	}
 	gui_stack_break(&stack);
@@ -178,12 +202,13 @@ server_config_gl_frame(void *_)
 	gui_stack_break(&stack);
 
 	if (parsed_seed == ULLONG_MAX) {
-		gui_text_center("Fix errors above to continue",
-		                window.width / 2, err_text_opts);
-	} else {
-		server.world.opts.scale = server_config.scale;
-		server.world.opts.seed = parsed_seed;
+		gui_text("Fix errors above to continue", err_text_opts);
+	} else if (server_config.sent_config_ns == 0) {
+		server_config.opts.scale = server_config.opts.scale;
+		server_config.opts.seed = parsed_seed;
 		server_config.next_btn_state = gui_btn(server_config.next_btn_state, "Next", btn_opts);
+	} else {
+		gui_text("Waiting for server confirmation", normal_text_opts);
 	}
 	gui_stack_break(&stack);
 
@@ -227,4 +252,3 @@ parse_seed(void)
 	}
 	return parsed_seed;
 }
-#endif

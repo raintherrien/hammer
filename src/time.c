@@ -1,6 +1,7 @@
+#include "hammer/time.h"
 #include <time.h>
 
-unsigned long long
+time_ns
 now_ns(void)
 {
 	struct timespec t;
