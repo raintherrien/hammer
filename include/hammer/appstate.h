@@ -1,26 +1,20 @@
-#ifndef HAMMER_CLIENT_APPSTATE_H_
-#define HAMMER_CLIENT_APPSTATE_H_
+#ifndef HAMMER_APPSTATE_H_
+#define HAMMER_APPSTATE_H_
 
 #include <deadlock/dl.h>
 
-enum {
-	APPSTATE_TRANSITION_MAIN_MENU_CLOSE,
-	APPSTATE_TRANSITION_SERVER_CONFIG,
-	APPSTATE_TRANSITION_SERVER_CONFIG_CANCEL,
-	APPSTATE_TRANSITION_SERVER_PLANET_GEN,
-	APPSTATE_TRANSITION_SERVER_PLANET_GEN_CANCEL,
-	APPSTATE_TRANSITION_SERVER_REGION_GEN,
-	APPSTATE_TRANSITION_SERVER_REGION_GEN_CANCEL,
-	APPSTATE_TRANSITION_CONFIRM_REGION,
-	APPSTATE_TRANSITION_CLIENT_CLOSE,
-	APPSTATE_TRANSITION_OPEN_IN_GAME_OPTIONS,
-	APPSTATE_TRANSITION_CLOSE_IN_GAME_OPTIONS
+struct appstate_transition {
+	int     state;
+	dltask *(*enter_fn)(void);
+	void    (* exit_fn)(dltask *);
 };
 
 /*
- * Returns a task which transfers control to the appstate system.
+ * Returns a task which transfers control to the appstate system registered to
+ * this process. This may be called at most once by a single process.
  */
-dltask *appstate_runner(void);
+dltask *appstate_register(size_t transitions_count,
+                          struct appstate_transition transitions[*]);
 
 /*
  * Immediately signals to the appstate system that it should perform a
@@ -28,6 +22,6 @@ dltask *appstate_runner(void);
  *
  * This should only be called immediately before returning from a state task.
  */
-void appstate_transition(int transition);
+void appstate_transition(int state);
 
-#endif /* HAMMER_CLIENT_APPSTATE_H_ */
+#endif /* HAMMER_APPSTATE_H_ */

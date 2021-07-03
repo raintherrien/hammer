@@ -1,5 +1,5 @@
+#include "hammer/appstate.h"
 #include "hammer/chunkmgr.h"
-#include "hammer/client/appstate.h"
 #include "hammer/client/chunkmesh.h"
 #include "hammer/client/glthread.h"
 #include "hammer/client/window.h"

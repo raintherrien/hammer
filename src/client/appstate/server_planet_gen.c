@@ -1,4 +1,4 @@
-#include "hammer/client/appstate.h"
+#include "hammer/appstate.h"
 #include "hammer/client/appstate/server_planet_gen/planet_gen_iter_async.h"
 #include "hammer/client/glthread.h"
 #include "hammer/client/gui.h"

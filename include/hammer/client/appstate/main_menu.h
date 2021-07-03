@@ -3,9 +3,7 @@
 
 #include <deadlock/dl.h>
 
-void appstate_main_menu_setup(void);
-void appstate_main_menu_teardown(void);
-
-extern dltask appstate_main_menu_frame;
+dltask *appstate_main_menu_enter(void);
+void    appstate_main_menu_exit (dltask *);
 
 #endif /* HAMMER_CLIENT_APPSTATE_MAIN_MENU_H_ */

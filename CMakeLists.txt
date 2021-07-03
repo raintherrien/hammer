@@ -33,9 +33,9 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 endif()
 add_compile_options("$<IF:$<C_COMPILER_ID:MSVC>,${HAMMER_MSVC_WARNFLAGS},${HAMMER_OTHR_WARNFLAGS}>")
 
-set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
+set(HAMMER_SOURCES ${PROJECT_SOURCE_DIR}/src/appstate.c
                    ${PROJECT_SOURCE_DIR}/src/cli.c
-                   ${PROJECT_SOURCE_DIR}/src/client/appstate.c
+                   ${PROJECT_SOURCE_DIR}/src/chunkmgr.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/godmode.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/main_menu.c
                    ${PROJECT_SOURCE_DIR}/src/client/appstate/server_config.c

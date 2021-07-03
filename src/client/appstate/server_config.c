@@ -1,4 +1,4 @@
-#include "hammer/client/appstate.h"
+#include "hammer/appstate.h"
 #include "hammer/client/appstate/server_config.h"
 #include "hammer/client/glthread.h"
 #include "hammer/client/gui.h"
