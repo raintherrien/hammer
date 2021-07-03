@@ -177,11 +177,11 @@ godmode_gl_frame(void *_)
 	//XXX Shader, MVP etc. uniforms
 
 	/* Arcball camera rotates around region */
-	mat4 view, proj, mvp;
-	float aspect = window.width / (float)window.height;
-	glm_perspective(glm_rad(client.camera.fov), aspect, 1, 2048, proj);
-	glm_look(client.camera.position, client.camera.forward, opengl_up, view);
-	glm_mat4_mulN((mat4 *[]){&proj, &view}, 2, mvp);
+	mat4s view, proj, mvp;
+	float aspect = window_aspect();
+	glms_perspective(glm_rad(client.camera.fov), aspect, 1, 2048, proj);
+	glms_look(client.camera.position, client.camera.forward, opengl_up, view);
+	glms_mat4_mulN((mat4 *[]){&proj, &view}, 2, mvp);
 
 	glUseProgram(chunkmesh_renderer.shader);
 	glUniformMatrix4fv(chunkmesh_renderer.uniforms.mvp, 1, GL_FALSE, (float *)mvp);
@@ -197,7 +197,6 @@ godmode_gl_frame(void *_)
 		glDrawArrays(GL_TRIANGLES, 0, m->vc);
 	}
 
-	window_submitframe();
-	return window.should_close;
+	return window_submitframe();
 }
 #endif

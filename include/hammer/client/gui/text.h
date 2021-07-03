@@ -3,6 +3,10 @@
 
 #include "hammer/client/gui.h"
 
+#define GUI_TEXT_VBO_SIZE 1048576
+#define GUI_FONT_ATLAS_LAYERS ((int)'~' - '!')
+_Static_assert(GUI_FONT_ATLAS_LAYERS == 93);
+
 struct gui_text_vert {
 	GLfloat position[3];
 	GLfloat dimensions[2];

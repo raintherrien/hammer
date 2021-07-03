@@ -3,6 +3,8 @@
 
 #include "hammer/client/gui.h"
 
+#define GUI_RECT_VBO_SIZE 1048576
+
 struct gui_rect_vert {
 	GLfloat position[3];
 	GLfloat color[4];

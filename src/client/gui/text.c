@@ -7,11 +7,6 @@
 #include <SDL2/SDL_image.h>
 
 #define FONT_DIR "resources/fonts/"
-#define TEXT_VBO_SIZE 1048576
-#define FONT_ATLAS_LAYERS ((int)'~' - '!')
-_Static_assert(FONT_ATLAS_LAYERS == 93);
-
-void *gui_element_with_focus;
 
 /*
  * Returns a font_atlas constructed from merging all individual character
@@ -88,8 +83,8 @@ gui_text_frame_create(struct gui_text_renderer *renderer,
 	glVertexAttribIPointer(3, 1, GL_UNSIGNED_BYTE,  VS, (void *)offset[3]);
 	glVertexAttribIPointer(4, 1, GL_UNSIGNED_BYTE,  VS, (void *)offset[4]);
 	glVertexAttribIPointer(5, 1, GL_UNSIGNED_INT,   VS, (void *)offset[5]);
-	glBufferStorage(GL_ARRAY_BUFFER, TEXT_VBO_SIZE, 0, flags);
-	frame->vb = glMapBufferRange(GL_ARRAY_BUFFER, 0, TEXT_VBO_SIZE, flags);
+	glBufferStorage(GL_ARRAY_BUFFER, GUI_TEXT_VBO_SIZE, 0, flags);
+	frame->vb = glMapBufferRange(GL_ARRAY_BUFFER, 0, GUI_TEXT_VBO_SIZE, flags);
 	frame->vb_vc = 0;
 }
 
@@ -110,48 +105,10 @@ gui_text_render(struct gui_text_renderer *renderer,
 	glUseProgram(renderer->shader);
 	glBindVertexArray(renderer->vao);
 	glUniformMatrix4fv(renderer->uniforms.ortho, 1, GL_FALSE,
-	                   (float *)window.ortho_matrix);
+	                   (float *)window_ortho().raw);
 	glBindBuffer(GL_ARRAY_BUFFER, frame->vbo);
 	glDrawArrays(GL_POINTS, 0, frame->vb_vc);
 	frame->vb_vc = 0;
-}
-
-void
-gui_text(const char      *text,
-         struct text_opts opts)
-{
-	struct gui_text_renderer *renderer = &window.gui_text_renderer;
-	struct gui_text_frame *frame = &window.current_frame->gui_text_frame;
-	float char_width = opts.size * renderer->font_regular.character_ratio;
-	size_t text_len = strlen(text);
-
-	float container_offset[3];
-	float w = text_len * char_width;
-	gui_current_container_get_offsets(container_offset);
-	gui_current_container_add_element(w, opts.size);
-	opts.xoffset += container_offset[0];
-	opts.yoffset += container_offset[1];
-	opts.zoffset += container_offset[2];
-
-	for (size_t i = 0; i < text_len; ++ i) {
-		if (TEXT_VBO_SIZE <= frame->vb_vc * sizeof(struct gui_text_vert))
-			continue;
-
-		int c = (int)text[i] - '!';
-		if (c < 0 || c >= FONT_ATLAS_LAYERS)
-			continue;
-		float x = opts.xoffset + char_width * i;
-		float y = opts.yoffset;
-		size_t vi = frame->vb_vc ++;
-		frame->vb[vi] = (struct gui_text_vert) {
-			.position = {x, y, opts.zoffset},
-			.dimensions = {char_width, opts.size},
-			.color  = opts.color,
-			.weight = opts.weight,
-			.style  = opts.style,
-			.character = c
-		};
-	}
 }
 
 void
@@ -165,12 +122,6 @@ gui_text_center(const char      *text,
 	gui_text(text, opts);
 }
 
-float
-gui_char_width(float size)
-{
-	return size * window.gui_text_renderer.font_regular.character_ratio;
-}
-
 static struct gui_text_font
 load_font_atlas(const char *fontname, GLenum texture)
 {
@@ -180,7 +131,7 @@ load_font_atlas(const char *fontname, GLenum texture)
 	glBindTexture(GL_TEXTURE_2D_ARRAY, atlas.texture_array);
 
 	SDL_Surface *surface;
-	for (int i = 0; i < FONT_ATLAS_LAYERS; ++ i) {
+	for (int i = 0; i < GUI_FONT_ATLAS_LAYERS; ++ i) {
 		char filename[64];
 		snprintf(filename, 63, FONT_DIR "%s/%d.png", fontname, i+'!');
 		surface = IMG_Load(filename);
@@ -217,7 +168,7 @@ load_font_atlas(const char *fontname, GLenum texture)
 			                   1, /* mipmaps */
 			                   atlas.texture_format,
 			                   surface->w, surface->h,
-			                   FONT_ATLAS_LAYERS); /* layers */
+			                   GUI_FONT_ATLAS_LAYERS); /* layers */
 			atlas.texture_width  = surface->w;
 			atlas.texture_height = surface->h;
 			atlas.character_ratio = atlas.texture_width /

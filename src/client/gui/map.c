@@ -49,30 +49,3 @@ gui_map_renderer_destroy(struct gui_map_renderer *renderer)
 	glDeleteVertexArrays(1, &renderer->vao);
 	glDeleteProgram(renderer->shader);
 }
-
-void
-gui_map(GLuint texture, struct map_opts opts)
-{
-	float container_offset[3];
-	float w = opts.xoffset + opts.width;
-	float h = opts.yoffset + opts.height;
-	gui_current_container_get_offsets(container_offset);
-	gui_current_container_add_element(w, h);
-	opts.xoffset += container_offset[0];
-	opts.yoffset += container_offset[1];
-	opts.zoffset += container_offset[2];
-
-	struct gui_map_renderer *renderer = &window.gui_map_renderer;
-
-	glUseProgram(renderer->shader);
-	glBindVertexArray(renderer->vao);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glUniform3f(renderer->uniforms.position, opts.xoffset, opts.yoffset, opts.zoffset);
-	glUniform2f(renderer->uniforms.dimensions, opts.width, opts.height);
-	glUniform2f(renderer->uniforms.translation, opts.tran_x, opts.tran_y);
-	glUniform2f(renderer->uniforms.scale, opts.scale_x, opts.scale_y);
-	glUniformMatrix4fv(renderer->uniforms.ortho, 1, GL_FALSE, (float *)window.ortho_matrix);
-	glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-}

@@ -527,9 +527,7 @@ planet_generation_gl_frame(void *_)
 		window_lock_mouse();
 	}
 
-	window_submitframe();
-
-	return window.should_close;
+	return window_submitframe();
 }
 
 static int

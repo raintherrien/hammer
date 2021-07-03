@@ -191,9 +191,7 @@ server_config_gl_frame(void *_)
 
 	gui_container_pop();
 
-	window_submitframe();
-
-	return window.should_close;
+	return window_submitframe();
 }
 
 /*

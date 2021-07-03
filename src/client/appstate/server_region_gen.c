@@ -306,17 +306,17 @@ region_generation_gl_frame(void *_)
 	/* Arcball camera rotates around region */
 	const float r = server_region_gen.renderer.render_size;
 	const float fov = glm_rad(60) / server_region_gen.zoom;
-	mat4 model, view, proj, mvp;
-	glm_translate_make(model, (vec3) { -r / 2.0f, 0, -r / 2.0f });
+	mat4s model, view, proj, mvp;
+	glms_translate_make(model, (vec3) { -r / 2.0f, 0, -r / 2.0f });
 	float aspect = window.width / (float)window.height;
-	glm_perspective(fov, aspect, 1, 1000, proj);
-	glm_lookat((vec3){r * sinf(server_region_gen.pitch) * cosf(server_region_gen.yaw),
-	                  r * cosf(server_region_gen.pitch),
-	                  r * sinf(server_region_gen.pitch) * sinf(server_region_gen.yaw)},
-	           (vec3){0, 0, 0},
-	           (vec3){0, 1, 0},
-	           view);
-	glm_mat4_mulN((mat4 *[]){&proj, &view, &model}, 3, mvp);
+	glms_perspective(fov, aspect, 1, 1000, proj);
+	glms_lookat((vec3){r * sinf(server_region_gen.pitch) * cosf(server_region_gen.yaw),
+	                   r * cosf(server_region_gen.pitch),
+	                   r * sinf(server_region_gen.pitch) * sinf(server_region_gen.yaw)},
+	            (vec3){0, 0, 0},
+	            (vec3){0, 1, 0},
+	            view);
+	glms_mat4_mulN((mat4 *[]){&proj, &view, &model}, 3, mvp);
 
 	glUseProgram(server_region_gen.renderer.shader);
 	glBindVertexArray(server_region_gen.renderer.vao);
@@ -325,8 +325,8 @@ region_generation_gl_frame(void *_)
 	glDrawArrays(GL_TRIANGLES, 0, server_region_gen.renderer.render_verts);
 
 	gui_container_pop();
-	window_submitframe();
-	return window.should_close;
+
+	return window_submitframe();
 }
 
 static int

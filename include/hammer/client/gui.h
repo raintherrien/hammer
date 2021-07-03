@@ -5,8 +5,6 @@
 #include <stdint.h>
 #include <GL/glew.h>
 
-extern void *gui_element_with_focus;
-
 typedef enum {
 	GUI_BTN_PRESSED  = 1<<0,
 	GUI_BTN_HELD     = 1<<1,
@@ -148,6 +146,9 @@ struct text_opts {
                            .xoffset = 0,        \
                            .yoffset = 0,        \
                            .zoffset = 1
+
+extern void *gui_element_with_focus;
+extern gui_container *gui_current_container;
 
 gui_btn_state gui_btn(
 	gui_btn_state   prior_state,

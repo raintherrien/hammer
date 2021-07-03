@@ -3,6 +3,8 @@
 
 #include "hammer/client/gui.h"
 
+#define GUI_LINE_VBO_SIZE 1048576
+
 struct gui_line_vert {
 	GLfloat position[3];
 	GLfloat thickness;

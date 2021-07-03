@@ -2,6 +2,9 @@
 #include "hammer/client/window.h"
 #include <assert.h>
 
+void          *gui_element_with_focus;
+gui_container *gui_current_container;
+
 gui_btn_state
 gui_btn(gui_btn_state   prior_state,
         const char     *text,
@@ -40,10 +43,12 @@ gui_btn(gui_btn_state   prior_state,
 		.height  = opts.height
 	});
 
-	if (window.mouse_x >= container_offset[0] + opts.xoffset &&
-	    window.mouse_x <  container_offset[0] + opts.xoffset + opts.width &&
-            window.mouse_y >= container_offset[1] + opts.yoffset &&
-            window.mouse_y <  container_offset[1] + opts.yoffset + opts.height)
+	struct window_mouse mouse = window_mouse();
+
+	if (mouse.x >= container_offset[0] + opts.xoffset &&
+	    mouse.x <  container_offset[0] + opts.xoffset + opts.width &&
+            mouse.y >= container_offset[1] + opts.yoffset &&
+            mouse.y <  container_offset[1] + opts.yoffset + opts.height)
 	{
 		/*
 		 * State machine designed to mimic traditional UI buttons
@@ -54,14 +59,13 @@ gui_btn(gui_btn_state   prior_state,
 		switch (prior_state) {
 		case GUI_BTN_PRESSED:
 		case GUI_BTN_HELD:
-			if (window.mouse_held[MOUSEBL])
+			if (window_mouse_held(MOUSE_BUTTON_LEFT))
 				return GUI_BTN_HELD;
 			else
 				return GUI_BTN_RELEASED;
 		default:
-			if (window.unhandled_mouse_press[MOUSEBL]) {
+			if (window_mouse_press_take(MOUSE_BUTTON_LEFT)) {
 				gui_element_with_focus = NULL;
-				window.unhandled_mouse_press[MOUSEBL] = 0;
 				return GUI_BTN_PRESSED;
 			}
 		}
@@ -101,14 +105,15 @@ gui_check(int               prior_state,
 		.height  = opts.height
 	});
 
-	if (window.mouse_x >= container_offset[0] + opts.xoffset &&
-	    window.mouse_x <  container_offset[0] + opts.xoffset + opts.width &&
-            window.mouse_y >= container_offset[1] + opts.yoffset &&
-            window.mouse_y <  container_offset[1] + opts.yoffset + opts.height &&
-            window.unhandled_mouse_press[MOUSEBL])
+	struct window_mouse mouse = window_mouse();
+
+	if (mouse.x >= container_offset[0] + opts.xoffset &&
+	    mouse.x <  container_offset[0] + opts.xoffset + opts.width &&
+            mouse.y >= container_offset[1] + opts.yoffset &&
+            mouse.y <  container_offset[1] + opts.yoffset + opts.height &&
+            window_mouse_press_take(MOUSE_BUTTON_LEFT))
 	{
 		gui_element_with_focus = NULL;
-		window.unhandled_mouse_press[MOUSEBL] = 0;
 		return !prior_state;
 	}
 	return prior_state;
@@ -122,11 +127,14 @@ gui_edit(char            *text,
 	float container_offset[3];
 	gui_current_container_get_offsets(container_offset);
 	size_t l = strlen(text);
-	if (window.mouse_x >= container_offset[0] + opts.xoffset &&
-	    window.mouse_x <  container_offset[0] + opts.xoffset + opts.width &&
-            window.mouse_y >= container_offset[1] + opts.yoffset &&
-            window.mouse_y <  container_offset[1] + opts.yoffset + opts.size &&
-            window.mouse_held[MOUSEBL])
+
+	struct window_mouse mouse = window_mouse();
+
+	if (mouse.x >= container_offset[0] + opts.xoffset &&
+	    mouse.x <  container_offset[0] + opts.xoffset + opts.width &&
+            mouse.y >= container_offset[1] + opts.yoffset &&
+            mouse.y <  container_offset[1] + opts.yoffset + opts.size &&
+            window_mouse_held(MOUSE_BUTTON_LEFT))
 	{
 		gui_element_with_focus = text;
 	}
@@ -135,8 +143,10 @@ gui_edit(char            *text,
 		opts.background = opts.foreground;
 		opts.foreground = swap;
 		/* Update text */
-		for (size_t i = 0; i < window.text_input_len; ++ i) {
-			switch (window.text_input[i]) {
+		const char *cptr = window_text_input();
+		while (*cptr) {
+			char c = *cptr;
+			switch (c) {
 			case '\n':
 				gui_element_with_focus = NULL;
 				goto unfocus;
@@ -148,13 +158,13 @@ gui_edit(char            *text,
 				if (l >= maxlen-1)
 					break;
 				/* printable */
-				if (window.text_input[i] >= ' ' &&
-				    window.text_input[i] <= '~')
+				if (c >= ' ' && c <= '~')
 				{
-					text[l ++] = window.text_input[i];
+					text[l ++] = c;
 					text[l] = '\0';
 				}
 			}
+			++ cptr;
 		}
 	}
 unfocus: ;
@@ -235,23 +245,23 @@ gui_container_handle(gui_container *c)
 void
 gui_container_push(gui_container *c)
 {
-	c->parent = window.current_container;
-	window.current_container = c;
+	c->parent = gui_current_container;
+	gui_current_container = c;
 }
 
 void
 gui_container_pop(void)
 {
-	gui_container_handle(window.current_container);
-	gui_container *parent = window.current_container->parent;
-	window.current_container->parent = NULL;
-	window.current_container = parent;
+	gui_container_handle(gui_current_container);
+	gui_container *parent = gui_current_container->parent;
+	gui_current_container->parent = NULL;
+	gui_current_container = parent;
 }
 
 void
 gui_current_container_add_element(float width, float height)
 {
-	gui_container *container = window.current_container;
+	gui_container *container = gui_current_container;
 	switch (container->type) {
 	case GUI_WINDOW:
 		break;
@@ -266,7 +276,7 @@ gui_current_container_add_element(float width, float height)
 void
 gui_current_container_get_offsets(float xyz[3])
 {
-	gui_container *container = window.current_container;
+	gui_container *container = gui_current_container;
 	switch (container->type) {
 	case GUI_WINDOW:
 		xyz[0] = container->stack.xoffset;
@@ -283,11 +293,11 @@ gui_current_container_get_offsets(float xyz[3])
 gui_container
 gui_current_container_get_state(void)
 {
-	return *window.current_container;
+	return *gui_current_container;
 }
 
 void
 gui_current_container_set_state(gui_container c)
 {
-	*window.current_container = c;
+	*gui_current_container = c;
 }
