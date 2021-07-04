@@ -63,18 +63,14 @@ server_discover_frame_async(DL_TASK_ARGS)
 			time_ns response_ns = now_ns() - server_discover.query_server_status_ns;
 			xpinfova("Response to server status query received after %llums", (response_ns) / 1000000);
 			switch (server_discover.status) {
-			case SERVER_STATUS_CONFIG:
+			case SERVER_STATUS_AWAITING_CONFIG:
 				xpinfo("Server in configurable state");
 				xpinfo("Connecting...");
 				transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_CONFIGURE_SERVER, NULL);
 				return;
 
-			case SERVER_STATUS_GENERATION:
+			case SERVER_STATUS_PLANET_GENERATION:
 				xpinfo("Server in generation state");
-				break;
-
-			case SERVER_STATUS_RUNNING:
-				xpinfo("Server in running state");
 				break;
 
 			default:
@@ -145,14 +141,11 @@ server_discover_gl_frame(void *_)
 	server_discover.cancel_btn_state = gui_btn(server_discover.cancel_btn_state, "Cancel", btn_opts);
 	gui_stack_break(&stack);
 	switch (server_discover.status) {
-	case SERVER_STATUS_CONFIG:
+	case SERVER_STATUS_AWAITING_CONFIG:
 		gui_text("Connecting to server in configurable state", normal_text_opts);
 		break;
-	case SERVER_STATUS_GENERATION:
+	case SERVER_STATUS_PLANET_GENERATION:
 		gui_text("Server is generating; Don't know how to connect to that!", err_text_opts);
-		break;
-	case SERVER_STATUS_RUNNING:
-		gui_text("Server is running; Don't know how to connect to that!", err_text_opts);
 		break;
 	default:
 		gui_text("Server is in an unknown state!", err_text_opts);

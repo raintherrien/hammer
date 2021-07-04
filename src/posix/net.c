@@ -56,6 +56,9 @@ fd_discard(int fd, size_t datasz)
 {
 	errno = 0;
 
+	/* Discard the header too */
+	datasz += NETMSG_HEADER_SZ;
+
 	/* TODO: This is pretty ugly and is definitely gonna seg fault :) */
 	char scratch[512];
 	size_t chunks = datasz / 512 + 1;
@@ -141,7 +144,7 @@ fd_write(int fd, enum netmsg_type type, const void *data, size_t datasz)
 
 	/* Write header */
 	char header[NETMSG_HEADER_SZ];
-	netmsg_encode_header(header, type, datasz + NETMSG_HEADER_SZ);
+	netmsg_encode_header(header, type, datasz);
 	WRITE(header, NETMSG_HEADER_SZ);
 
 	/* Write data */

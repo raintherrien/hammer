@@ -1,6 +1,7 @@
 #include "hammer/client/appstate/main_menu.h"
 #include "hammer/client/appstate/server_config.h"
 #include "hammer/client/appstate/server_discover.h"
+#include "hammer/client/appstate/server_planet_gen.h"
 #include "hammer/client/appstate/transition_table.h"
 
 struct appstate_transition client_tt[] = {
@@ -23,6 +24,13 @@ struct appstate_transition client_tt[] = {
 		CLIENT_APPSTATE_TRANSITION_CONFIGURE_SERVER,
 		appstate_server_config_enter,
 		appstate_server_config_exit
+	},
+
+	/* Server has begun generationg a planet; let's watch! */
+	{
+		CLIENT_APPSTATE_TRANSITION_PLANET_GENERATION,
+		appstate_server_planet_gen_entry,
+		appstate_server_planet_gen_exit
 	}
 };
 

@@ -232,7 +232,12 @@ window_dims(void)
 struct window_mouse
 window_mouse(void)
 {
-	return (struct window_mouse) { window.mouse_x, window.mouse_y };
+	return (struct window_mouse) {
+		window.mouse_x,
+		window.mouse_y,
+		window.motion_x,
+		window.motion_y
+	};
 }
 
 const char *

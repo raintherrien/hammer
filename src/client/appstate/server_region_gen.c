@@ -17,7 +17,6 @@
 dltask appstate_server_region_gen_frame;
 
 void appstate_server_region_gen_setup(void) { }
-void appstate_server_planet_gen_reset_region_selection(void) { }
 void appstate_server_region_gen_teardown_discard_region(void) { }
 void appstate_server_region_gen_teardown_confirm_region(void) { }
 

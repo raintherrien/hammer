@@ -20,6 +20,8 @@ struct window_dims {
 struct window_mouse {
 	int x;
 	int y;
+	int mx;
+	int my;
 };
 
 enum mouse_button {

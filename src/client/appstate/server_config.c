@@ -97,12 +97,15 @@ server_config_frame_async(DL_TASK_ARGS)
 	size_t sz;
 	if (client_peek(&type, &sz)) {
 		switch (type) {
-		case NETMSG_TYPE_SERVER_ACCEPTED_CONFIG: {
+		/*
+		 * The server accepted our configuration. Let's watch it
+		 * generate a planet!
+		 */
+		case NETMSG_TYPE_SERVER_ACCEPTED_CONFIG:
 			xpinfo("Server accepted configuration");
-			// xxx move to next step
-			transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_MAIN_MENU_OPEN, NULL);
+			client_discard(sz);
+			transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_PLANET_GENERATION, &server_config.opts);
 			break;
-		}
 
 		default:
 			errno = EINVAL;

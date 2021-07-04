@@ -2,8 +2,8 @@
 #define HAMMER_SERVER_SERVER_H_
 
 #include "hammer/server_status.h"
-#include "hammer/server/planet.h"
 #include "hammer/server/world.h"
+#include "hammer/worldgen/planet.h"
 #include <deadlock/dl.h>
 
 struct server {
@@ -11,8 +11,9 @@ struct server {
 
 	enum server_status status;
 
-	struct planet planet;
 	struct world world;
+
+	struct planet_gen *planet_gen;
 };
 
 #endif /* HAMMER_SERVER_SERVER_H_ */
