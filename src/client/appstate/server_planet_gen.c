@@ -49,6 +49,10 @@ static struct {
 
 	int mouse_captured;
 
+	long lithosphere_generation;
+	long climate_generation;
+	long stream_generation;
+
 	char lithosphere_progress_str[PROGRESS_STR_MAX_LEN];
 	char climate_progress_str[PROGRESS_STR_MAX_LEN];
 	char stream_progress_str[PROGRESS_STR_MAX_LEN];
@@ -88,6 +92,10 @@ appstate_server_planet_gen_entry(void *optsx)
 	server_planet_gen.selected_region_size_mag2 = 0;
 
 	server_planet_gen.mouse_captured = 0;
+
+	server_planet_gen.lithosphere_generation = 0;
+	server_planet_gen.climate_generation = 0;
+	server_planet_gen.stream_generation = 0;
 
 	/*
 	 * We don't know how many lithosphere steps there are since this is
@@ -138,7 +146,7 @@ planet_generation_frame_async(DL_TASK_ARGS)
 		client_write(NETMSG_TYPE_CLIENT_QUERY_PLANET_GENERATION_STAGE, NULL, 0);
 	}
 
-	/* Respond to any messages */
+	/* Respond to any messages; TODO: Reading payload should be separate task */
 	enum netmsg_type type;
 	size_t sz;
 	if (client_peek(&type, &sz)) {
@@ -158,32 +166,37 @@ planet_generation_frame_async(DL_TASK_ARGS)
 			}
 			server_planet_gen.last_stage = server_planet_gen.payload->stage;
 
-/*
-			if (server.planet.lithosphere) {
+			switch (server_planet_gen.last_stage) {
+			case PLANET_GEN_STAGE_LITHOSPHERE:
+				++ server_planet_gen.lithosphere_generation;
 				snprintf(server_planet_gen.lithosphere_progress_str,
-					 PROGRESS_STR_MAX_LEN,
-					 "Lithosphere Generation: %ld/%ld",
-					 (long)server.planet.lithosphere->generation,
-					 (long)server.world.opts.tectonic.generations *
-					       server.world.opts.tectonic.generation_steps);
-			}
+				         PROGRESS_STR_MAX_LEN,
+				         "Lithosphere Generation: %ld/%ld",
+				         server_planet_gen.lithosphere_generation,
+				         (long)server_planet_gen.opts.tectonic.generations *
+				               server_planet_gen.opts.tectonic.generation_steps);
+				break;
 
-			if (server.planet.climate) {
+			case PLANET_GEN_STAGE_CLIMATE:
+				++ server_planet_gen.climate_generation;
 				snprintf(server_planet_gen.climate_progress_str,
-					 PROGRESS_STR_MAX_LEN,
-					 "Climate Model Generation: %ld/%ld",
-					 (long)(server.planet.climate ? server.planet.climate->generation : 0),
-					 (long)CLIMATE_GENERATIONS);
-			}
+				         PROGRESS_STR_MAX_LEN,
+				         "Climate Model Generation: %ld/%ld",
+				         server_planet_gen.climate_generation,
+				         (long)CLIMATE_GENERATIONS);
+				break;
 
-			if (server.planet.stream) {
+			case PLANET_GEN_STAGE_STREAM:
+				++ server_planet_gen.stream_generation;
 				snprintf(server_planet_gen.stream_progress_str,
-					 PROGRESS_STR_MAX_LEN,
-					 "Stream Graph Generation: %ld/%ld",
-					 (long)(server.planet.stream ? server.planet.stream->generation : 0),
-					 (long)STREAM_GRAPH_GENERATIONS);
+				         PROGRESS_STR_MAX_LEN,
+				         "Stream Graph Generation: %ld/%ld",
+				         server_planet_gen.stream_generation,
+				         (long)STREAM_GRAPH_GENERATIONS);
+				break;
+
+			default: break;
 			}
-*/
 			break;
 		}
 
