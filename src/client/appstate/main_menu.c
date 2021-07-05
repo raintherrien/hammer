@@ -62,8 +62,8 @@ main_menu_frame_async(DL_TASK_ARGS)
 	 */
 	if (main_menu.generate_new_world_btn_state == GUI_BTN_RELEASED) {
 		/* Start the local server and connect to it */
-		local_connection_init();
-		launch_local_server();
+		local_connection_start();
+		local_server_start();
 		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_DISCOVER_SERVER, NULL);
 		return;
 	}

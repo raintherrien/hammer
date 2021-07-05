@@ -8,7 +8,8 @@ static void appstate_manager_trampoline_async(DL_TASK_ARGS);
 dltask *
 appstate_manager_init(struct appstate_manager *mgr,
                       size_t transition_count,
-                      struct appstate_transition transitions[transition_count])
+                      struct appstate_transition transitions[transition_count],
+                      void *initial_state_arg)
 {
 	mgr->trampoline_ = DL_TASK_INIT(appstate_manager_trampoline_async);
 
@@ -27,7 +28,7 @@ appstate_manager_init(struct appstate_manager *mgr,
 
 		++ init_state_count;
 		mgr->curr_transition_ = t;
-		mgr->curr_appstate_ = mgr->curr_transition_.enter_fn(NULL);
+		mgr->curr_appstate_ = mgr->curr_transition_.enter_fn(initial_state_arg);
 	}
 	if (init_state_count < 1) {
 		errno = EINVAL;

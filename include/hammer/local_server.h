@@ -3,6 +3,6 @@
 
 /* Defined in server.c but used by client code to launch a local server  */
 
-void launch_local_server(void);
+void local_server_start(void);
 
 #endif /* HAMMER_LOCAL_SERVER_H_ */

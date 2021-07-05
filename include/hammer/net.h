@@ -8,6 +8,8 @@ enum netmsg_type {
 	NETMSG_TYPE_HEARTBEAT_SYN = 0,
 	NETMSG_TYPE_HEARTBEAT_ACK,
 
+	NETMSG_TYPE_CLIENT_REQUEST_SERVER_SHUTDOWN,
+
 	NETMSG_TYPE_CLIENT_QUERY_SERVER_STATUS,
 	NETMSG_TYPE_SERVER_RESPONSE_SERVER_STATUS,
 
@@ -35,7 +37,8 @@ void netmsg_encode_header(char buf[NETMSG_HEADER_SZ], enum netmsg_type type, siz
  * communication. This function spawns a server on the client task pool and
  * updates the client and server network function pointers.
  */
-void local_connection_init(void);
+void local_connection_start(void);
+void local_connection_stop(void);
 
 /*
  * Client/server communication depends on whether we're connecting locally
@@ -51,5 +54,7 @@ extern net_discard_fn server_discard;
 extern net_peek_fn    server_peek;
 extern net_read_fn    server_read;
 extern net_write_fn   server_write;
+
+void reset_null_net_fns(void);
 
 #endif /* HAMMER_NET_H_ */

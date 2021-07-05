@@ -54,6 +54,20 @@ netmsg_encode_header(char buf[NETMSG_HEADER_SZ],
 		buf[i+1] = sptr[i];
 }
 
+void
+reset_null_net_fns(void)
+{
+	client_discard = null_discard;
+	client_peek = null_peek;
+	client_read = null_read;
+	client_write = null_write;
+
+	server_discard = null_discard;
+	server_peek = null_peek;
+	server_read = null_read;
+	server_write = null_write;
+}
+
 static void
 null_discard(size_t datasz)
 {

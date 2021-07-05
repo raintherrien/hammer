@@ -17,43 +17,56 @@ struct frame {
 	size_t id;
 };
 
-struct frame_timing {
+struct frame_time {
 	uint64_t cpu_ns;
+	uint64_t gl_ns;
+	uint64_t vs_ns;
 };
 
 struct window_s {
+	/* SDL window stuff */
+	SDL_Window   *handle;
+	SDL_GLContext glcontext;
+	int           width, height;
+
+	/* GUI */
 	struct gui_text_renderer gui_text_renderer;
-	struct gui_map_renderer gui_map_renderer;
+	struct gui_map_renderer  gui_map_renderer;
 	struct gui_rect_renderer gui_rect_renderer;
 	struct gui_line_renderer gui_line_renderer;
-	gui_container  gui_default_window;
+	gui_container            gui_default_window;
 
-	SDL_Window   *handle;
-	const Uint8  *keydown;
-	SDL_Event    *frame_events;
-	SDL_GLContext glcontext;
-	struct frame  frames[FRAMES_IN_FLIGHT];
-	struct frame_timing timing[FRAME_TIMING_LEN];
-	struct frame *current_frame;
-	size_t        current_frame_id;
-	size_t        text_input_len;
-	mat4s         ortho_matrix;
-	SDL_Keymod    keymod;
-	int           resized;
-	int           motion_x, motion_y;
-	int           mouse_x, mouse_y;
-	int           scroll;
-	int           width, height;
-	int           mouse_held[MOUSE_BUTTON_COUNT];
-	int           unhandled_mouse_press[MOUSE_BUTTON_COUNT];
-	int           should_close;
-	int           display_frame_timing;
-	char          text_input[MAX_TEXT_INPUT_LEN];
+	/* Frames and timing */
+	time_ns           glthread_begin_ns;
+	time_ns           last_frame_submitted_ns;
+	struct frame      frames[FRAMES_IN_FLIGHT];
+	struct frame_time timing[FRAME_TIMING_LEN];
+	struct frame     *current_frame;
+	time_ns           accum_gl_ns;
+	size_t            current_frame_id;
+
+	/* Events and input */
+	const Uint8 *keydown;
+	SDL_Event   *frame_events;
+	char         text_input[MAX_TEXT_INPUT_LEN];
+	size_t       text_input_len;
+	SDL_Keymod   keymod;
+	int          resized;
+	int          motion_x, motion_y;
+	int          mouse_x, mouse_y;
+	int          scroll;
+	int          mouse_held[MOUSE_BUTTON_COUNT];
+	int          unhandled_mouse_press[MOUSE_BUTTON_COUNT];
+	int          should_close;
+
+	/* Rendering */
+	mat4s ortho_matrix;
+	int   display_frame_time;
 };
 
 struct window_s window;
 
-static void window_draw_frame_timing(void);
+static void window_draw_frame_time(void);
 static void window_acquire_next_frame(void);
 static void print_GLenum(GLenum e);
 static void gl_debug_callback(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLchar *, const void *);
@@ -130,12 +143,14 @@ window_create(void)
 		window.frames[i].id = i;
 	}
 	memset(window.timing, 0, FRAME_TIMING_LEN * sizeof(*window.timing));
+	window.accum_gl_ns = 0;
 	window.current_frame_id = FRAMES_IN_FLIGHT;
 	window.current_frame = window.frames;
 	gui_window_init(&window.gui_default_window, (struct window_opts) { WINDOW_OPTS_DEFAULT });
 	gui_current_container = &window.gui_default_window;
+	window.glthread_begin_ns = 0;
 	window.should_close = 0;
-	window.display_frame_timing = 0;
+	window.display_frame_time = 0;
 }
 
 void
@@ -244,6 +259,18 @@ const char *
 window_text_input(void)
 {
 	return window.text_input;
+}
+
+void
+window_gl_timer_begin(void)
+{
+	window.glthread_begin_ns = now_ns();
+}
+
+void
+window_gl_timer_end(void)
+{
+	window.accum_gl_ns += now_ns() - window.glthread_begin_ns;
 }
 
 void
@@ -391,6 +418,7 @@ window_submitframe(void)
 	                &window.current_frame->gui_text_frame);
 
 	/* Create fence to complete when this frame is rendered */
+	window.last_frame_submitted_ns = now_ns();
 	SDL_GL_SwapWindow(window.handle);
 	window.current_frame->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 
@@ -400,7 +428,7 @@ window_submitframe(void)
 }
 
 static void
-window_draw_frame_timing(void)
+window_draw_frame_time(void)
 {
 	const float z = 1; /* above everything */
 	const float graph_height_px = 100;
@@ -415,12 +443,20 @@ window_draw_frame_timing(void)
 	avg_cpu_ns /= FRAME_TIMING_LEN;
 
 	float ys = graph_height_px / max_cpu_ns;
-	/* Draw frame graph from right to left to right, right most recent */
+	/*
+	 * Draw frame graph from right to left to right, right most recent.
+	 * CPU time includes graphics time which includes VSync time.
+	 */
 	for (int x = 0; x < FRAME_TIMING_LEN; ++ x) {
 		size_t tid = (window.current_frame_id + x - FRAME_TIMING_LEN) % FRAME_TIMING_LEN;
-		struct frame_timing *t = &window.timing[tid];
-		float total_y = graph_height_px - t->cpu_ns * ys;
-		gui_line(x, graph_height_px, z, 1, 0xffffffff, x, total_y, 1, 1, 0xffffffff);
+		struct frame_time *t = &window.timing[tid];
+
+		float vs_y = graph_height_px - t->vs_ns * ys;
+		float gl_y = graph_height_px - t->gl_ns * ys;
+		float cpuy = graph_height_px - t->cpu_ns * ys;
+		gui_line(x, graph_height_px, z, 1, 0xff8000ff, x, vs_y, 1, 1, 0xff8000ff);
+		gui_line(x, vs_y, z, 1, 0x00ff00ff, x, gl_y, 1, 1, 0x00ff00ff);
+		gui_line(x, gl_y, z, 1, 0xffffffff, x, cpuy, 1, 1, 0xffffffff);
 	}
 	/* Draw y axis label */
 	float avgy = graph_height_px - avg_cpu_ns * ys;
@@ -433,7 +469,7 @@ window_draw_frame_timing(void)
 		.xoffset = FRAME_TIMING_LEN + 1,
 		.yoffset = avgy - 24 / 2,
 		.zoffset = z,
-		.size = 24,
+		.size = 18,
 		.color = 0xffff00ff
 	});
 	/* Max */
@@ -444,9 +480,25 @@ window_draw_frame_timing(void)
 		.xoffset = FRAME_TIMING_LEN + 1,
 		.yoffset = 1,
 		.zoffset = z,
-		.size = 24,
+		.size = 18,
 		.color = 0xff0000ff
 	});
+	/* Legend */
+	gui_container legend;
+	gui_stack_init(&legend, (struct stack_opts) {
+		STACK_OPTS_DEFAULTS,
+		.vpadding = 1,
+		.xoffset = FRAME_TIMING_LEN + 10 * gui_char_width(18),
+		.yoffset = 1,
+		.zoffset = z
+	});
+	gui_container_push(&legend);
+	gui_text("unspecified", (struct text_opts) { TEXT_OPTS_DEFAULTS, .size = 18, .color = 0xffffffff });
+	gui_stack_break(&legend);
+	gui_text("OpenGL code", (struct text_opts) { TEXT_OPTS_DEFAULTS, .size = 18, .color = 0x00ff00ff });
+	gui_stack_break(&legend);
+	gui_text("OpenGL driver", (struct text_opts) { TEXT_OPTS_DEFAULTS, .size = 18, .color = 0xff8000ff });
+	gui_container_pop();
 }
 
 static void
@@ -469,8 +521,14 @@ window_acquire_next_frame(void)
 	}
 	glDeleteSync(recycling_fence);
 	window.current_frame->fence = 0;
+	/* Steal the currently executing glthread time */
+	window_gl_timer_end();
+	window_gl_timer_begin();
+	window.timing[timing_id].vs_ns = now_ns() - window.last_frame_submitted_ns;
+	window.timing[timing_id].gl_ns = window.accum_gl_ns;
 	window.timing[timing_id].cpu_ns = now_ns() - window.current_frame->frame_begin_ns;
 	window.current_frame->frame_begin_ns = now_ns();
+	window.accum_gl_ns = 0;
 
 	/* Begin this frame */
 	window.current_frame->id = new_frame;
@@ -481,8 +539,8 @@ window_acquire_next_frame(void)
 	 * Conditionally draw timing information for this frame before
 	 * starting new timers, will have a lag of FRAMES_IN_FLIGHT.
 	 */
-	if (window.display_frame_timing)
-		window_draw_frame_timing();
+	if (window.display_frame_time)
+		window_draw_frame_time();
 
 	window.resized = 0;
 	window.motion_x = 0;
@@ -505,7 +563,7 @@ window_acquire_next_frame(void)
 				break;
 			switch (e.key.keysym.scancode) {
 			case SDL_SCANCODE_F3:
-				window.display_frame_timing = !window.display_frame_timing;
+				window.display_frame_time = !window.display_frame_time;
 				break;
 			case SDL_SCANCODE_RETURN:
 				window.text_input[window.text_input_len ++] = '\n';

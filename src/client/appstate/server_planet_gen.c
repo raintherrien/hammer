@@ -133,6 +133,8 @@ planet_generation_frame_async(DL_TASK_ARGS)
 	if (glthread_execute(planet_generation_gl_frame, NULL) ||
 	    server_planet_gen.cancel_btn_state == GUI_BTN_RELEASED)
 	{
+		client_write(NETMSG_TYPE_CLIENT_REQUEST_SERVER_SHUTDOWN, NULL, 0);
+		local_connection_stop();
 		transition(&client_appstate_mgr, CLIENT_APPSTATE_TRANSITION_MAIN_MENU_OPEN, NULL);
 		return;
 	}

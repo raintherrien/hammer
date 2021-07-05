@@ -7,13 +7,17 @@
 #include <deadlock/dl.h>
 
 struct server {
-	dltask appstate_task;
-
 	enum server_status status;
 
 	struct world world;
 
 	struct planet_gen *planet_gen;
+
+	int shutdown_requested;
+	int is_shutdown;
 };
+
+void server_create(struct server *);
+void server_destroy(struct server *);
 
 #endif /* HAMMER_SERVER_SERVER_H_ */

@@ -66,7 +66,8 @@ struct appstate_manager {
  */
 dltask *appstate_manager_init(struct appstate_manager *,
                               size_t transition_count,
-                              struct appstate_transition transitions[*]);
+                              struct appstate_transition transitions[*],
+                              void *initial_state_arg);
 
 /*
  * Immediately signals to the appstate system that it should perform a

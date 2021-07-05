@@ -1,6 +1,7 @@
 #include "hammer/client/glthread.h"
 #include "hammer/client/window.h"
 #include "hammer/error.h"
+#include "hammer/time.h"
 #include <errno.h>
 #include <stdatomic.h>
 #include <pthread.h>
@@ -72,6 +73,8 @@ glthread_destroy(void)
 int
 glthread_execute(glthread_callback fn, void *arg)
 {
+	window_gl_timer_begin();
+
 	pthread_mutex_lock(&glthread.mtx);
 	atomic_store_explicit(&glthread.fn, fn, memory_order_relaxed);
 	glthread.arg = arg;
@@ -87,6 +90,8 @@ glthread_execute(glthread_callback fn, void *arg)
 
 	pthread_mutex_lock(&glthread.mtx);
 	pthread_mutex_unlock(&glthread.mtx);
+
+	window_gl_timer_end();
 
 	return glthread.ret;
 }

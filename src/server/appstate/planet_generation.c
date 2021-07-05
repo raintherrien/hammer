@@ -1,3 +1,4 @@
+#include "hammer/server/appstate/common.h"
 #include "hammer/server/appstate/transition_table.h"
 #include "hammer/server/server.h"
 #include "hammer/mem.h"
@@ -10,15 +11,20 @@
 #include "hammer/worldgen/tectonic.h"
 #include <string.h>
 
-static void appstate_planet_generation_async(DL_TASK_ARGS);
+static struct {
+	dltask appstate_task;
+	struct server *s;
 
-/*
- * planet_generation iterates whatever stage of planet generation we're in and
- * computes an RGB image of the result to be sent to the client.
- */
-static struct planet_gen_payload *payload;
-static size_t                     payloadsz;
-static enum planet_gen_stage      next_stage;
+	/*
+	 * planet_generation iterates whatever stage of planet generation we're in and
+	 * computes an RGB image of the result to be sent to the client.
+	 */
+	struct planet_gen_payload *payload;
+	size_t                     payloadsz;
+	enum planet_gen_stage      next_stage;
+} planet_gen;
+
+static void appstate_planet_generation_async(DL_TASK_ARGS);
 
 /*
  * Functions to resize and write to planet_generation_render.
@@ -32,134 +38,124 @@ static void render_img_composite  (struct server *);
 dltask *
 appstate_planet_generation_enter(void *sx)
 {
-	struct server *s = sx;
-	s->appstate_task = DL_TASK_INIT(appstate_planet_generation_async);
+	planet_gen.s = sx;
+	planet_gen.appstate_task = DL_TASK_INIT(appstate_planet_generation_async);
 
 	/* Update status to planet generation */
-	s->status = SERVER_STATUS_PLANET_GENERATION;
-	s->planet_gen = xmalloc(sizeof(*s->planet_gen));
+	planet_gen.s->status = SERVER_STATUS_PLANET_GENERATION;
+	planet_gen.s->planet_gen = xmalloc(sizeof(*planet_gen.s->planet_gen));
 	xpinfo("Server beginning planet generation");
 
 	/* Will be realloced as needed */
-	payload = xmalloc(sizeof(*payload));
-	payload->render_size = 0;
-	payload->stage = PLANET_GEN_STAGE_NONE;
-	next_stage = PLANET_GEN_STAGE_LITHOSPHERE;
+	planet_gen.payload = xmalloc(sizeof(*planet_gen.payload));
+	planet_gen.payload->render_size = 0;
+	planet_gen.payload->stage = PLANET_GEN_STAGE_NONE;
+	planet_gen.next_stage = PLANET_GEN_STAGE_LITHOSPHERE;
 
-	return &s->appstate_task;
+	return &planet_gen.appstate_task;
 }
 
 void
-appstate_planet_generation_exit(dltask *t)
+appstate_planet_generation_exit(dltask *_)
 {
-	struct server *s = DL_TASK_DOWNCAST(t, struct server, appstate_task);
+	(void) _;
 
-	free(payload);
-	payload = NULL;
+	free(planet_gen.payload);
+	planet_gen.payload = NULL;
 
-	/* We never made it past planet generation, free the server */
-	if (s->status == SERVER_STATUS_PLANET_GENERATION) {
-		if (s->planet_gen->stream) {
-			stream_graph_destroy(s->planet_gen->stream);
-			free(s->planet_gen->stream);
+	if (planet_gen.s->shutdown_requested) {
+		if (planet_gen.s->planet_gen->stream) {
+			stream_graph_destroy(planet_gen.s->planet_gen->stream);
+			free(planet_gen.s->planet_gen->stream);
 		}
-		if (s->planet_gen->climate) {
-			climate_destroy(s->planet_gen->climate);
-			free(s->planet_gen->climate);
+		if (planet_gen.s->planet_gen->climate) {
+			climate_destroy(planet_gen.s->planet_gen->climate);
+			free(planet_gen.s->planet_gen->climate);
 		}
-		if (s->planet_gen->lithosphere) {
-			lithosphere_destroy(s->planet_gen->lithosphere);
-			free(s->planet_gen->lithosphere);
+		if (planet_gen.s->planet_gen->lithosphere) {
+			lithosphere_destroy(planet_gen.s->planet_gen->lithosphere);
+			free(planet_gen.s->planet_gen->lithosphere);
 		}
-		free(s->planet_gen);
-		free(s);
+		free(planet_gen.s->planet_gen);
 	}
 }
 
 static void
 appstate_planet_generation_async(DL_TASK_ARGS)
 {
-	DL_TASK_ENTRY(struct server, s, appstate_task);
-
 	/* Perform stage transitions */
-	if (next_stage != payload->stage && next_stage != PLANET_GEN_STAGE_NONE) {
-		payload->stage = next_stage;
+	if (planet_gen.next_stage != planet_gen.payload->stage) {
+		planet_gen.payload->stage = planet_gen.next_stage;
 
-		switch (next_stage) {
+		switch (planet_gen.next_stage) {
 		case PLANET_GEN_STAGE_LITHOSPHERE:
 			/* Create lithosphere */
-			s->planet_gen->lithosphere = xcalloc(1, sizeof(*s->planet_gen->lithosphere));
+			planet_gen.s->planet_gen->lithosphere = xcalloc(1, sizeof(*planet_gen.s->planet_gen->lithosphere));
 			resize_payload(LITHOSPHERE_LEN);
-			lithosphere_create(s->planet_gen->lithosphere, &s->world.opts);
+			lithosphere_create(planet_gen.s->planet_gen->lithosphere, &planet_gen.s->world.opts);
 			break;
 
 		case PLANET_GEN_STAGE_CLIMATE:
 			/* Create climate */
-			s->planet_gen->climate = xcalloc(1, sizeof(*s->planet_gen->climate));
-			climate_create(s->planet_gen->climate, s->planet_gen->lithosphere);
+			planet_gen.s->planet_gen->climate = xcalloc(1, sizeof(*planet_gen.s->planet_gen->climate));
+			climate_create(planet_gen.s->planet_gen->climate, planet_gen.s->planet_gen->lithosphere);
 			resize_payload(CLIMATE_LEN);
 			break;
 
 		case PLANET_GEN_STAGE_STREAM:
 			/* Create stream */
-			s->planet_gen->stream = xcalloc(1, sizeof(*s->planet_gen->stream));
-			size_t stream_graph_size = world_opts_stream_graph_size(&s->world.opts);
-			stream_graph_create(s->planet_gen->stream,
-			                    s->planet_gen->climate,
-			                    s->world.opts.seed,
+			planet_gen.s->planet_gen->stream = xcalloc(1, sizeof(*planet_gen.s->planet_gen->stream));
+			size_t stream_graph_size = world_opts_stream_graph_size(&planet_gen.s->world.opts);
+			stream_graph_create(planet_gen.s->planet_gen->stream,
+			                    planet_gen.s->planet_gen->climate,
+			                    planet_gen.s->world.opts.seed,
 			                    stream_graph_size);
-			resize_payload(s->planet_gen->stream->size);
+			resize_payload(planet_gen.s->planet_gen->stream->size);
 			break;
 
 		case PLANET_GEN_STAGE_COMPOSITE:
-			/* Create climate */
-			s->planet_gen->climate = xcalloc(1, sizeof(*s->planet_gen->climate));
-			climate_create(s->planet_gen->climate, s->planet_gen->lithosphere);
-			resize_payload(CLIMATE_LEN);
-			break;
-
 		case PLANET_GEN_STAGE_NONE:
-			xpanic("unreachable");
+			/* Complete */
 			break;
 		}
 	}
 
 	/* Perform generation */
-	switch (payload->stage) {
+	switch (planet_gen.payload->stage) {
 	case PLANET_GEN_STAGE_LITHOSPHERE:
 		/* Update and blit lithosphere */
-		lithosphere_update(s->planet_gen->lithosphere, &s->world.opts);
-		render_img_lithosphere(s);
-		size_t steps = s->world.opts.tectonic.generations *
-		               s->world.opts.tectonic.generation_steps;
-		if (s->planet_gen->lithosphere->generation == steps)
-			next_stage = PLANET_GEN_STAGE_CLIMATE;
+		lithosphere_update(planet_gen.s->planet_gen->lithosphere, &planet_gen.s->world.opts);
+		render_img_lithosphere(planet_gen.s);
+		size_t steps = planet_gen.s->world.opts.tectonic.generations *
+		               planet_gen.s->world.opts.tectonic.generation_steps;
+		if (planet_gen.s->planet_gen->lithosphere->generation == steps)
+			planet_gen.next_stage = PLANET_GEN_STAGE_CLIMATE;
 		break;
 
 	case PLANET_GEN_STAGE_CLIMATE:
 		/* Update and blit climate */
-		climate_update(s->planet_gen->climate);
-		render_img_climate(s);
-		if (s->planet_gen->climate->generation == CLIMATE_GENERATIONS)
-			next_stage = PLANET_GEN_STAGE_STREAM;
+		climate_update(planet_gen.s->planet_gen->climate);
+		render_img_climate(planet_gen.s);
+		if (planet_gen.s->planet_gen->climate->generation == CLIMATE_GENERATIONS)
+			planet_gen.next_stage = PLANET_GEN_STAGE_STREAM;
 		break;
 
 	case PLANET_GEN_STAGE_STREAM:
 		/* Update and blit stream */
-		stream_graph_update(s->planet_gen->stream);
-		render_img_stream(s);
-		if (s->planet_gen->stream->generation == STREAM_GRAPH_GENERATIONS)
-			next_stage = PLANET_GEN_STAGE_COMPOSITE;
+		stream_graph_update(planet_gen.s->planet_gen->stream);
+		render_img_stream(planet_gen.s);
+		if (planet_gen.s->planet_gen->stream->generation == STREAM_GRAPH_GENERATIONS)
+			planet_gen.next_stage = PLANET_GEN_STAGE_COMPOSITE;
 		break;
 
 	case PLANET_GEN_STAGE_COMPOSITE:
 		/* Blit composite and finish */
-		render_img_composite(s);
-		next_stage = PLANET_GEN_STAGE_NONE;
+		render_img_composite(planet_gen.s);
+		planet_gen.next_stage = PLANET_GEN_STAGE_NONE;
 		break;
 
 	case PLANET_GEN_STAGE_NONE:
-		xpanic("unreachable");
+		/* Complete */
 		break;
 	}
 
@@ -167,26 +163,15 @@ appstate_planet_generation_async(DL_TASK_ARGS)
 	enum netmsg_type type;
 	size_t sz;
 	while (server_peek(&type, &sz)) {
+		if (server_handle_common_netmsg(planet_gen.s, type, sz))
+			continue;
+
 		switch (type) {
-		/* Always respond to heartbeats */
-		case NETMSG_TYPE_HEARTBEAT_SYN:
-			xpinfo("Responding to client heartbeat");
-			server_discard(sz);
-			server_write(NETMSG_TYPE_HEARTBEAT_ACK, NULL, 0);
-			break;
-
-		/* Tell the user we're generating the planet */
-		case NETMSG_TYPE_CLIENT_QUERY_SERVER_STATUS:
-			xpinfo("Responding to client status query");
-			server_discard(sz);
-			server_write(NETMSG_TYPE_SERVER_RESPONSE_SERVER_STATUS, &s->status, sizeof(s->status));
-			break;
-
 		/* The user has requested an update! Shove our img at them */
 		case NETMSG_TYPE_CLIENT_QUERY_PLANET_GENERATION_STAGE:
-			xpinfova("Responding to client planet generation query with %zu byte payload", payloadsz);
+			xpinfova("Responding to client planet generation query with %zu byte planet_gen.payload", planet_gen.payloadsz);
 			server_discard(sz);
-			server_write(NETMSG_TYPE_SERVER_RESPONSE_PLANET_GENERATION_PAYLOAD, payload, payloadsz);
+			server_write(NETMSG_TYPE_SERVER_RESPONSE_PLANET_GENERATION_PAYLOAD, planet_gen.payload, planet_gen.payloadsz);
 			break;
 
 		default:
@@ -201,15 +186,15 @@ appstate_planet_generation_async(DL_TASK_ARGS)
 static void
 resize_payload(int wh)
 {
-	payloadsz = sizeof(struct planet_gen_payload) + sizeof(unsigned char) * 3 * wh * wh;
-	payload = xrealloc(payload, payloadsz);
-	payload->render_size = wh;
+	planet_gen.payloadsz = sizeof(struct planet_gen_payload) + sizeof(unsigned char) * 3 * wh * wh;
+	planet_gen.payload = xrealloc(planet_gen.payload, planet_gen.payloadsz);
+	planet_gen.payload->render_size = wh;
 }
 
 static void
 render_img_lithosphere(struct server *s)
 {
-	unsigned char *render = payload->render;
+	unsigned char *render = planet_gen.payload->render;
 	const struct lithosphere *l = s->planet_gen->lithosphere;
 	/* Blue below sealevel, green to red continent altitude */
 	for (size_t i = 0; i < LITHOSPHERE_AREA; ++ i) {
@@ -232,7 +217,7 @@ render_img_lithosphere(struct server *s)
 static void
 render_img_climate(struct server *s)
 {
-	unsigned char *render = payload->render;
+	unsigned char *render = planet_gen.payload->render;
 	struct climate *c = s->planet_gen->climate;
 	for (size_t i = 0; i < CLIMATE_AREA; ++ i) {
 		float temp = 1 - c->inv_temp[i];
@@ -300,7 +285,7 @@ swizzle(uint32_t i, unsigned char *rgb)
 static void
 render_img_stream(struct server *s)
 {
-	unsigned char *render = payload->render;
+	unsigned char *render = planet_gen.payload->render;
 	struct stream_graph *stream = s->planet_gen->stream;
 	memset(render, 0, stream->size * stream->size * 3 * sizeof(*render));
 
@@ -339,7 +324,7 @@ render_img_stream(struct server *s)
 static void
 render_img_composite(struct server *s)
 {
-	unsigned char *render = payload->render;
+	unsigned char *render = planet_gen.payload->render;
 	const struct stream_graph *stream = s->planet_gen->stream;
 
 	/*

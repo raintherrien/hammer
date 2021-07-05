@@ -5,6 +5,7 @@
 #include "hammer/client/gui/map.h"
 #include "hammer/client/gui/rect.h"
 #include "hammer/client/gui/text.h"
+#include "hammer/time.h"
 #include <cglm/struct.h>
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
@@ -47,10 +48,15 @@ int window_mouse_held(enum mouse_button);
 int window_mouse_press_peek(enum mouse_button);
 int window_mouse_press_take(enum mouse_button);
 
-mat4s window_ortho(void);
-float window_aspect(void);
-struct window_dims window_dims(void);
+/* Various ugly getters and setters */
+mat4s               window_ortho(void);
+float               window_aspect(void);
+struct window_dims  window_dims(void);
 struct window_mouse window_mouse(void);
-const char *window_text_input(void);
+const char         *window_text_input(void);
+
+/* Used by glthread to time spent in graphics code */
+void window_gl_timer_begin(void);
+void window_gl_timer_end(void);
 
 #endif /* HAMMER_CLIENT_WINDOW_H_ */

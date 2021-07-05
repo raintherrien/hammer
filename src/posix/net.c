@@ -34,8 +34,10 @@ static struct {
 } unix_net;
 
 void
-local_connection_init(void)
+local_connection_start(void)
 {
+	/* XXX invoked multiple times if the user returns to the main menu */
+
 	if (socketpair(AF_LOCAL, SOCK_STREAM, 0, unix_net.fds) == -1) {
 		xpanic("Unable to create UNIX domain socket connection");
 	}
@@ -49,6 +51,12 @@ local_connection_init(void)
 	server_peek = server_unix_peek;
 	server_read = server_unix_read;
 	server_write = server_unix_write;
+}
+
+void
+local_connection_stop(void)
+{
+	reset_null_net_fns();
 }
 
 static void

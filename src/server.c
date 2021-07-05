@@ -2,13 +2,17 @@
 #include "hammer/error.h"
 #include "hammer/net.h"
 #include "hammer/server/appstate/transition_table.h"
+#include "hammer/server/server.h"
 #include <deadlock/dl.h>
 #include <assert.h>
 
+struct server global_server;
+
 void
-launch_local_server(void)
+local_server_start(void)
 {
-	dlasync(appstate_manager_init(&server_appstate_mgr, local_server_tt_sz, local_server_tt));
+	server_create(&global_server);
+	dlasync(appstate_manager_init(&server_appstate_mgr, local_server_tt_sz, local_server_tt, &global_server));
 }
 
 int
